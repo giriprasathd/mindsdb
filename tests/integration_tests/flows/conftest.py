@@ -10,6 +10,7 @@ import docker
 import pytest
 import netifaces
 import pandas as pd
+import psutil
 
 from mindsdb.utilities.ps import get_child_pids
 
@@ -126,8 +127,12 @@ def mindsdb_app(request, config):
         with open(config_path, "wt") as f:
             f.write(json.dumps(config))
 
+        use_gui = getattr(request.module, "USE_GUI", False)
+
         os.environ['CHECK_FOR_UPDATES'] = '0'
         cmd = ['python3', '-m', 'mindsdb', f'--api={api_str}', f'--config={config_path}', '--verbose']
+        if use_gui is False:
+            cmd.append('--no_studio')
         timeout = 90
 
     print('Starting mindsdb process!')
@@ -150,7 +155,7 @@ def mindsdb_app(request, config):
         except Exception:
             time.sleep(1)
             if time.time() > threshold:
-                raise Exception("unable to launch mindsdb app in 60 seconds")
+                raise Exception(f"unable to launch mindsdb app in {timeout} seconds")
 
     def cleanup():
         print("Stopping Application")
@@ -160,7 +165,10 @@ def mindsdb_app(request, config):
             # shutil.rmtree("./var")
         else:
             for ch in get_child_pids(app.pid):
-                ch.kill()
+                try:
+                    ch.kill()
+                except psutil.NoSuchProcess:
+                    pass
             app.kill()
     request.addfinalizer(cleanup)
     return
