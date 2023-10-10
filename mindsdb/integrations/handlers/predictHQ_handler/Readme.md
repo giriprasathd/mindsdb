@@ -10,6 +10,25 @@ In this handler, Predict HQapi is used and more information about this api can b
 
 Please follow this (link) [https://www.predicthq.com/support/how-to-create-an-api-token] to generate token for accessing PredictHQ API
 
+## Reddit Handler Initialization
+
+The Reddit handler is initialized with the following parameters:
+
+- `client_id`: a required PredictHQ API client ID
+- `client_secret`: a required PredictHQ API client secret
+
+
+  ## Example Usage
+```
+CREATE DATABASE my_PredictHQ
+With 
+    ENGINE = 'PredictHQ',
+    PARAMETERS = {
+     "client_id":"YOUR_CLIENT_ID",
+     "client_secret":"YOUR_CLIENT_SECRET"
+    };
+```
+
 ## Implementation
 
 This handler was implemented as per the (Application Handler framework)[https://docs.mindsdb.com/contribute/app-handlers]
