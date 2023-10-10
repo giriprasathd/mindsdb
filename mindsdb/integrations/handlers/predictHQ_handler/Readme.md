@@ -1,7 +1,7 @@
 # PredictHQ API Handler
 This is the implementation of the PredictHQ API handler for MindsDB.
 
-##PredictHQ 
+## PredictHQ 
 
 PredictHQ is a demand intelligence solution that helps businesses correlate event data to demand. It tracks event data in 19 categories and ranks events using a proprietary ranking system. The platform provides detailed expansive coverage of public holidays, observances, school holidays, and academic holidays globally. It also tracks remembrance, awareness, and celebration days or events that are not normally days off work, like Valentine’s Day, Mother’s Day or Father’s Day
 
