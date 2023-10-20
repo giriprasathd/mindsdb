@@ -15,3 +15,18 @@ XXX Test Failed: (link to the test results in your GitHub repository), (link to 
 </br>
 Email handler for Outlook - Test Passed: https://github.com/maulanaakbardj/mindsdb-Testing/blob/main/Email-Handler/Testing.md
 </br>
+QuestDB ML Integration Test Passed: https://github.com/maulanaakbardj/mindsdb-Testing/blob/main/QuestDB/Testing.md
+</br>
+Writer.ai Test Passed: https://github.com/maulanaakbardj/mindsdb-Testing/blob/main/Writerai-Handler/Writer_QA.md
+</br>
+Cohere Handler Test passed: https://github.com/hridaya423/HacktoberfestMindsDBTesting/blob/master/Cohere_ML._QA.md
+</br>
+Apache Pinot data integration Test Passed: https://github.com/maulanaakbardj/mindsdb-Testing/blob/main/PinotDB/Apache_Pinot_QA.md
+</br>
+Microsoft Teams Test Passed: https://github.com/maulanaakbardj/mindsdb-Testing/blob/main/MsTeams/Microsoft_Teams_QA.md
+</br>
+Google Big Query Integration Test Passed: https://github.com/maulanaakbardj/mindsdb-Testing/blob/main/BigQuery/GoogleBigQuery_QA.md
+</br>
+</br>
+Web Crawler Integration Test Passed: https://github.com/Taheralicyclewala/MindsDB-Testing/blob/main/WebCrawler/Web_Crawler_QA.md
+</br>
