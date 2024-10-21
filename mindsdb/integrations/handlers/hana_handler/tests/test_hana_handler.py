@@ -2,7 +2,7 @@ import os
 import unittest
 
 from mindsdb.integrations.handlers.hana_handler.hana_handler import HanaHandler
-from mindsdb.api.mysql.mysql_proxy.libs.constants.response_type import RESPONSE_TYPE
+from mindsdb.api.executor.data_types.response_type import RESPONSE_TYPE
 
 
 """
@@ -31,7 +31,7 @@ class HanaHandlerTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.kwargs = {
-            "host": os.environ.get('HANA_HOST', 'localhost'),
+            "address": os.environ.get('HANA_ADDRESS', 'localhost'),
             "port": os.environ.get('HANA_PORT', 30015),
             "user": "DBADMIN",
             "password": os.environ.get('HANA_PASSWORD'),

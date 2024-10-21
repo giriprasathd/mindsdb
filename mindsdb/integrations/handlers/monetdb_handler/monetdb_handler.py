@@ -1,4 +1,3 @@
-from collections import OrderedDict
 from typing import Optional
 from mindsdb_sql.parser.ast.base import ASTNode
 from mindsdb.integrations.libs.base import DatabaseHandler
@@ -10,21 +9,16 @@ from mindsdb.integrations.libs.response import (
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
-
-
 
 import pandas as pd
 import pymonetdb as mdb
 from .utils.monet_get_id import *
 from sqlalchemy_monetdb.dialect import MonetDialect 
 
-
+logger = log.getLogger(__name__)
 
 
 class MonetDBHandler(DatabaseHandler):
-
-
     name= 'monetdb'
 
     def __init__(self, name: str, connection_data: Optional[dict], **kwargs):
@@ -72,7 +66,7 @@ class MonetDBHandler(DatabaseHandler):
   
             self.is_connected= True
         except Exception as e:
-            log.logger.error(f"Error while connecting to {self.database}, {e}")
+            logger.error(f"Error while connecting to {self.database}, {e}")
 
 
         return self.connection
@@ -88,7 +82,7 @@ class MonetDBHandler(DatabaseHandler):
             self.connection.close()
             self.is_connected=False
         except Exception as e:
-            log.logger.error(f"Error while disconnecting to {self.database}, {e}")
+            logger.error(f"Error while disconnecting to {self.database}, {e}")
 
         return 
 
@@ -105,7 +99,7 @@ class MonetDBHandler(DatabaseHandler):
             self.connect()
             responseCode.success = True
         except Exception as e:
-            log.logger.error(f'Error connecting to database {self.database}, {e}!')
+            logger.error(f'Error connecting to database {self.database}, {e}!')
             responseCode.error_message = str(e)
         finally:
             if responseCode.success is True and need_to_close:
@@ -143,7 +137,7 @@ class MonetDBHandler(DatabaseHandler):
                 response = Response(RESPONSE_TYPE.OK)
             self.connection.commit()
         except Exception as e:
-            log.logger.error(f'Error running query: {query} on {self.database}!')
+            logger.error(f'Error running query: {query} on {self.database}!')
             response = Response(
                 RESPONSE_TYPE.ERROR,
                 error_message=str(e)
@@ -223,48 +217,3 @@ class MonetDBHandler(DatabaseHandler):
             WHERE table_id = {table}
         """
         return self.query(q)
-
-        
-
-
-
-
-
-connection_args = OrderedDict(
-    host={
-        'type': ARG_TYPE.STR,
-        'description': 'The host name or IP address of the MonetDB server/database.'
-    },
-    database={
-        'type': ARG_TYPE.STR,
-        'description': """
-            The database name to use when connecting with the MonetDB server.
-        """
-    },
-    user={
-        'type': ARG_TYPE.STR,
-        'description': 'The user name used to authenticate with the MonetDB server.'
-    },
-    password={
-        'type': ARG_TYPE.STR,
-        'description': 'The password to authenticate the user with the MonetDB server.'
-    },
-    port={
-        'type': ARG_TYPE.INT,
-        'description': 'Specify port to connect MonetDB through TCP/IP'
-    },
-    schema_name={
-        'type': ARG_TYPE.STR,
-        'description': 'Specify the schema name for Listing Table '
-    },
-
-)
-
-connection_args_example = OrderedDict(
-    host='127.0.0.1',
-    port=50000,
-    password='monetdb',
-    user='monetdb',
-    schemaName="sys",
-    database="demo",
-)

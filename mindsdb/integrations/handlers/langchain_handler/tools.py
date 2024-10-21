@@ -1,17 +1,30 @@
 import tiktoken
 
-from typing import Callable
-from mindsdb_sql import parse_sql, Insert
+from typing import Callable, Dict
 
-from langchain.utilities import GoogleSerperAPIWrapper
+from mindsdb_sql import parse_sql
+from mindsdb_sql.parser.ast import Insert
+
 from langchain.prompts import PromptTemplate
 from langchain.agents import load_tools, Tool
+
+from langchain_experimental.utilities import PythonREPL
+from langchain_community.utilities import GoogleSerperAPIWrapper
 
 from langchain.chains.llm import LLMChain
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
 from langchain.chains import ReduceDocumentsChain, MapReduceDocumentsChain
 
+from mindsdb.integrations.utilities.rag.rag_pipeline_builder import RAG
+from mindsdb.integrations.utilities.rag.settings import RAGPipelineModel, VectorStoreType, DEFAULT_COLLECTION_NAME
+from mindsdb.interfaces.skills.skill_tool import skill_tool, SkillType
+from mindsdb.interfaces.storage import db
+from mindsdb.utilities import log
+
+logger = log.getLogger(__name__)
+from mindsdb.interfaces.storage.db import KnowledgeBase
+from mindsdb.utilities import log
 
 # Individual tools
 # Note: all tools are defined in a closure to pass required args (apart from LLM input) through it, as custom tools don't allow custom field assignment.  # noqa
@@ -22,7 +35,7 @@ def get_exec_call_tool(llm, executor, model_kwargs) -> Callable:
             ret = executor.execute_command(ast_query)
             if ret.data is None and ret.error_code is None:
                 return ''
-            data = ret.data  # list of lists
+            data = ret.data.to_lists()  # list of lists
             data = '\n'.join([  # rows
                 '\t'.join(      # columns
                     str(row) if isinstance(row, str) else [str(value) for value in row]
@@ -45,7 +58,7 @@ def get_exec_metadata_tool(llm, executor, model_kwargs) -> Callable:
 
             integration = parts[0]
             integrations = executor.session.integration_controller
-            handler = integrations.get_handler(integration)
+            handler = integrations.get_data_handler(integration)
 
             if len(parts) == 1:
                 df = handler.get_tables().data_frame
@@ -92,40 +105,76 @@ def get_mdb_write_tool(executor) -> Callable:
             return f"mindsdb write tool failed with error:\n{str(e)}"
     return mdb_write_call
 
+def _setup_standard_tools(tools, llm, model_kwargs):
+    executor = skill_tool.get_command_executor()
+
+    all_standard_tools = []
+    langchain_tools = []
+    for tool in tools:
+        if tool == 'mindsdb_read':
+            mdb_tool = Tool(
+                name="MindsDB",
+                func=get_exec_call_tool(llm, executor, model_kwargs),
+                description="useful to read from databases or tables connected to the mindsdb machine learning package. the action must be a valid simple SQL query, always ending with a semicolon. For example, you can do `show databases;` to list the available data sources, and `show tables;` to list the available tables within each data source."  # noqa
+            )
+
+            mdb_meta_tool = Tool(
+                name="MDB-Metadata",
+                func=get_exec_metadata_tool(llm, executor, model_kwargs),
+                description="useful to get column names from a mindsdb table or metadata from a mindsdb data source. the command should be either 1) a data source name, to list all available tables that it exposes, or 2) a string with the format `data_source_name.table_name` (for example, `files.my_table`), to get the table name, table type, column names, data types per column, and amount of rows of the specified table."  # noqa
+            )
+            all_standard_tools.append(mdb_tool)
+            all_standard_tools.append(mdb_meta_tool)
+        if tool == 'mindsdb_write':
+            mdb_write_tool = Tool(
+                name="MDB-Write",
+                func=get_mdb_write_tool(executor),
+                description="useful to write into data sources connected to mindsdb. command must be a valid SQL query with syntax: `INSERT INTO data_source_name.table_name (column_name_1, column_name_2, [...]) VALUES (column_1_value_row_1, column_2_value_row_1, [...]), (column_1_value_row_2, column_2_value_row_2, [...]), [...];`. note the command always ends with a semicolon. order of column names and values for each row must be a perfect match. If write fails, try casting value with a function, passing the value without quotes, or truncating string as needed.`."  # noqa
+            )
+            all_standard_tools.append(mdb_write_tool)
+        elif tool == 'python_repl':
+            tool = Tool(
+                name="python_repl",
+                func=PythonREPL().run,
+                description="useful for running custom Python code. Note: this is a powerful tool, so use with caution."  # noqa
+            )
+            langchain_tools.append(tool)
+        elif tool == 'serper':
+            search = GoogleSerperAPIWrapper()
+            tool = Tool(
+                name="Intermediate Answer",
+                func=search.run,
+                description="useful for when you need to ask with search",
+            )
+            langchain_tools.append(tool)
+        else:
+            raise ValueError(f"Unsupported tool: {tool}")
+
+    if langchain_tools:
+        all_standard_tools += load_tools(langchain_tools)
+    return all_standard_tools
+
 
 # Collector
-def setup_tools(llm, model_kwargs, pred_args, executor, default_agent_tools, write_privileges):
-    mdb_tool = Tool(
-            name="MindsDB",
-            func=get_exec_call_tool(llm, executor, model_kwargs),
-            description="useful to read from databases or tables connected to the mindsdb machine learning package. the action must be a valid simple SQL query, always ending with a semicolon. For example, you can do `show databases;` to list the available data sources, and `show tables;` to list the available tables within each data source."  # noqa
-        )
+def setup_tools(llm, model_kwargs, pred_args, default_agent_tools):
 
-    mdb_meta_tool = Tool(
-        name="MDB-Metadata",
-        func=get_exec_metadata_tool(llm, executor, model_kwargs),
-        description="useful to get column names from a mindsdb table or metadata from a mindsdb data source. the command should be either 1) a data source name, to list all available tables that it exposes, or 2) a string with the format `data_source_name.table_name` (for example, `files.my_table`), to get the table name, table type, column names, data types per column, and amount of rows of the specified table."  # noqa
-    )
-
-    mdb_write_tool = Tool(
-        name="MDB-Write",
-        func=get_mdb_write_tool(executor),
-        description="useful to write into data sources connected to mindsdb. command must be a valid SQL query with syntax: `INSERT INTO data_source_name.table_name (column_name_1, column_name_2, [...]) VALUES (column_1_value_row_1, column_2_value_row_1, [...]), (column_1_value_row_2, column_2_value_row_2, [...]), [...];`. note the command always ends with a semicolon. order of column names and values for each row must be a perfect match. If write fails, try casting value with a function, passing the value without quotes, or truncating string as needed.`."  # noqa
-    )
-
-    toolkit = pred_args['tools'] if pred_args['tools'] is not None else default_agent_tools
+    toolkit = pred_args['tools'] if pred_args.get('tools') is not None else default_agent_tools
 
     standard_tools = []
-    custom_tools = []
+    function_tools = []
 
     for tool in toolkit:
         if isinstance(tool, str):
             standard_tools.append(tool)
         else:
             # user defined custom functions
-            custom_tools.append(tool)
+            function_tools.append(tool)
 
-    tools = load_tools(standard_tools)
+    tools = []
+
+    if len(tools) == 0:
+        tools = _setup_standard_tools(standard_tools, llm, model_kwargs)
+
     if model_kwargs.get('serper_api_key', False):
         search = GoogleSerperAPIWrapper(serper_api_key=model_kwargs.pop('serper_api_key'))
         tools.append(Tool(
@@ -134,14 +183,7 @@ def setup_tools(llm, model_kwargs, pred_args, executor, default_agent_tools, wri
             description="useful for when you need to search the internet (note: in general, use this as a last resort)"  # noqa
         ))
 
-    # add connection to mindsdb
-    tools.append(mdb_tool)
-    tools.append(mdb_meta_tool)
-
-    if write_privileges:
-        tools.append(mdb_write_tool)
-
-    for tool in custom_tools:
+    for tool in function_tools:
         tools.append(Tool(
             name=tool['name'],
             func=tool['func'],

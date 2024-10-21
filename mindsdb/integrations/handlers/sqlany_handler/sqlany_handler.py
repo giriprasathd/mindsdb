@@ -1,6 +1,3 @@
-from textwrap import dedent
-from collections import OrderedDict
-
 from pandas import DataFrame
 
 import sqlanydb
@@ -10,18 +7,16 @@ from mindsdb_sql import parse_sql
 from mindsdb_sql.parser.ast.base import ASTNode
 from mindsdb_sql.render.sqlalchemy_render import SqlalchemyRender
 
-from mindsdb.utilities.log import get_log
+from mindsdb.utilities import log
 from mindsdb.integrations.libs.base import DatabaseHandler
 from mindsdb.integrations.libs.response import (
     HandlerStatusResponse as StatusResponse,
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
 
 
-log = get_log()
-
+logger = log.getLogger(__name__)
 
 class SQLAnyHandler(DatabaseHandler):
     """
@@ -103,7 +98,7 @@ class SQLAnyHandler(DatabaseHandler):
             cur.execute('SELECT 1 FROM SYS.DUMMY;')
             response.success = True
         except sqlanydb.Error as e:
-            log.error(f'Error connecting to SAP SQL Anywhere {self.host}, {e}!')
+            logger.error(f'Error connecting to SAP SQL Anywhere {self.host}, {e}!')
             response.error_message = e
 
         if response.success is True and need_to_close:
@@ -139,7 +134,7 @@ class SQLAnyHandler(DatabaseHandler):
                 )
             connection.commit()
         except Exception as e:
-            log.error(f'Error running query: {query} on {self.connection}!')
+            logger.error(f'Error running query: {query} on {self.connection}!')
             response = Response(
                 RESPONSE_TYPE.ERROR,
                 error_code=0,
@@ -182,44 +177,3 @@ class SQLAnyHandler(DatabaseHandler):
         """
 
         return self.renderer.dialect.get_columns(table_name)
-
-# For complete list of parameters: https://infocenter.sybase.com/help/index.jsp?topic=/com.sybase.help.sqlanywhere.12.0.1/dbadmin/da-conparm.html
-connection_args = OrderedDict(
-    host={
-        'type': ARG_TYPE.STR,
-        'description': 'The IP address/host name of the SAP SQL Anywhere instance host.'
-    },
-    port={
-        'type': ARG_TYPE.STR,
-        'description': 'The port number of the SAP SQL Anywhere instance.'
-    },
-    user={
-        'type': ARG_TYPE.STR,
-        'description': 'Specifies the user name.'
-    },
-    password={
-        'type': ARG_TYPE.STR,
-        'description': 'Specifies the password for the user.'
-    },
-    server={
-        'type': ARG_TYPE.STR,
-        'description': 'Specifies the name of the server to connect to.'
-    },
-    database={
-        'type': ARG_TYPE.STR,
-        'description': 'Specifies the name of the database to connect to.'
-    },
-    encrypt={
-        'type': ARG_TYPE.BOOL,
-        'description': 'Enables or disables TLS encryption.'
-    },
-)
-
-connection_args_example = OrderedDict(
-    host='localhost',
-    port=55505,
-    user='DBADMIN',
-    password='password',
-    serverName='TestMe',
-    database='MINDSDB'
-)

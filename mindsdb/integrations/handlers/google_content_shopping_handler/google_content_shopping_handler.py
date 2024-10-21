@@ -1,13 +1,12 @@
 import json
-from collections import OrderedDict
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
+
 import pandas as pd
 from pandas import DataFrame
 from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from mindsdb.api.mysql.mysql_proxy.libs.constants.response_type import RESPONSE_TYPE
+from mindsdb.api.executor.data_types.response_type import RESPONSE_TYPE
 from .google_content_shopping_tables import AccountsTable, OrdersTable, ProductsTable
 from mindsdb.integrations.libs.api_handler import APIHandler, FuncParser
 from mindsdb.integrations.libs.response import (
@@ -16,6 +15,7 @@ from mindsdb.integrations.libs.response import (
 )
 from mindsdb.utilities import log
 
+logger = log.getLogger(__name__)
 
 class GoogleContentShoppingHandler(APIHandler):
     """
@@ -91,7 +91,7 @@ class GoogleContentShoppingHandler(APIHandler):
             service = self.connect()
             response.success = True
         except Exception as e:
-            log.logger.error(f'Error connecting to Google Content API for Shopping: {e}!')
+            logger.error(f'Error connecting to Google Content API for Shopping: {e}!')
             response.error_message = e
 
         self.is_connected = response.success
@@ -394,20 +394,3 @@ class GoogleContentShoppingHandler(APIHandler):
             return self.delete_products(params)
         else:
             raise NotImplementedError(f'Unknown method {method_name}')
-
-
-connection_args = OrderedDict(
-    credentials={
-        'type': ARG_TYPE.PATH,
-        'description': 'The path to the credentials file. If not specified, the default credentials are used.'
-    },
-    merchant_id={
-        'type': ARG_TYPE.STR,
-        'description': 'The merchant ID for the Google Content API.'
-    },
-)
-
-connection_args_example = OrderedDict(
-    credentials='/path/to/credentials.json',
-    merchant_id='1234567890'
-)

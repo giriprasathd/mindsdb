@@ -1,4 +1,8 @@
+import datetime
 from typing import Dict, List
+
+from sqlalchemy import null
+from sqlalchemy.orm.attributes import flag_modified
 
 from mindsdb.interfaces.storage import db
 from mindsdb.interfaces.database.projects import ProjectController
@@ -30,10 +34,11 @@ class SkillsController:
         project = self.project_controller.get(name=project_name)
         return db.Skills.query.filter(
             db.Skills.name == skill_name,
-            db.Skills.project_id == project.id
+            db.Skills.project_id == project.id,
+            db.Skills.deleted_at == null()
         ).first()
 
-    def get_skills(self, project_name: str = 'mindsdb') -> List[dict]:
+    def get_skills(self, project_name: str) -> List[dict]:
         '''
         Gets all skills in a project.
 
@@ -47,10 +52,21 @@ class SkillsController:
             ValueError: If `project_name` does not exist
         '''
 
-        project = self.project_controller.get(name=project_name)
-        return db.Skills.query.filter(
-            db.Skills.project_id == project.id
-        ).all()
+        project_controller = ProjectController()
+        projects = project_controller.get_list()
+        if project_name is not None:
+            projects = list([p for p in projects if p.name == project_name])
+        project_ids = list([p.id for p in projects])
+
+        query = (
+            db.session.query(db.Skills)
+            .filter(
+                db.Skills.project_id.in_(project_ids),
+                db.Skills.deleted_at == null()
+            )
+        )
+
+        return query.all()
 
     def add_skill(
             self,
@@ -96,7 +112,7 @@ class SkillsController:
     def update_skill(
             self,
             skill_name: str,
-            new_name: str,
+            new_name: str = None,
             project_name: str = 'mindsdb',
             type: str = None,
             params: Dict[str, str] = None):
@@ -132,6 +148,10 @@ class SkillsController:
             # Remove None values entirely.
             params = {k: v for k, v in existing_params.items() if v is not None}
             existing_skill.params = params
+            # Some versions of SQL Alchemy won't handle JSON updates correctly without this.
+            # See: https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.attributes.flag_modified
+            flag_modified(existing_skill, 'params')
+
         db.session.commit()
 
         return existing_skill
@@ -151,6 +171,5 @@ class SkillsController:
         skill = self.get_skill(skill_name, project_name)
         if skill is None:
             raise ValueError(f"Skill with name doesn't exist: {skill_name}")
-        db.session.delete(skill)
-
+        skill.deleted_at = datetime.datetime.now()
         db.session.commit()

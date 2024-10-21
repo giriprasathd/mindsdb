@@ -1,5 +1,3 @@
-from collections import OrderedDict
-
 import duckdb
 import pandas as pd
 from duckdb import DuckDBPyConnection
@@ -8,15 +6,14 @@ from mindsdb_sql.parser.ast.base import ASTNode
 from mindsdb_sql.render.sqlalchemy_render import SqlalchemyRender
 
 from mindsdb.integrations.libs.base import DatabaseHandler
-from mindsdb.integrations.libs.const import (
-    HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE,
-)
 from mindsdb.integrations.libs.response import RESPONSE_TYPE
 from mindsdb.integrations.libs.response import HandlerResponse as Response
 from mindsdb.integrations.libs.response import (
     HandlerStatusResponse as StatusResponse,
 )
 from mindsdb.utilities import log
+
+logger = log.getLogger(__name__)
 
 
 class DuckDBHandler(DatabaseHandler):
@@ -81,7 +78,7 @@ class DuckDBHandler(DatabaseHandler):
             self.connect()
             response.success = True
         except Exception as e:
-            log.logger.error(
+            logger.error(
                 f'Error connecting to DuckDB {self.connection_data["database"]}, {e}!'
             )
             response.error_message = str(e)
@@ -122,7 +119,7 @@ class DuckDBHandler(DatabaseHandler):
                 connection.commit()
                 response = Response(RESPONSE_TYPE.OK)
         except Exception as e:
-            log.logger.error(
+            logger.error(
                 f'Error running query: {query} on {self.connection_data["database"]}!'
             )
             response = Response(RESPONSE_TYPE.ERROR, error_message=str(e))
@@ -171,17 +168,3 @@ class DuckDBHandler(DatabaseHandler):
 
         query = f'DESCRIBE {table_name};'
         return self.native_query(query)
-
-
-connection_args = OrderedDict(
-    database={
-        'type': ARG_TYPE.STR,
-        'description': 'The database file to read and write from. The special value :memory: (default) can be used to create an in-memory database.',
-    },
-    read_only={
-        'type': ARG_TYPE.BOOL,
-        'description': 'A flag that specifies if the connection should be made in read-only mode.',
-    },
-)
-
-connection_args_example = OrderedDict(database='db.duckdb', read_only=True)

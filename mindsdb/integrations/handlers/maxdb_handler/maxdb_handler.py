@@ -1,4 +1,3 @@
-from collections import OrderedDict
 from typing import Optional
 
 from mindsdb_sql import parse_sql
@@ -12,10 +11,10 @@ from mindsdb.integrations.libs.response import (
     HandlerResponse as Response,
     RESPONSE_TYPE, HandlerResponse
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
 import pandas as pd
 import jaydebeapi as jd
 
+logger = log.getLogger(__name__)
 
 class MaxDBHandler(DatabaseHandler):
     """
@@ -77,7 +76,7 @@ class MaxDBHandler(DatabaseHandler):
             self.connection.close()
             self.is_connected = False
         except Exception as e:
-            log.logger.error(f"Error while disconnecting to {self.database}, {e}")
+            logger.error(f"Error while disconnecting to {self.database}, {e}")
 
         return
 
@@ -93,7 +92,7 @@ class MaxDBHandler(DatabaseHandler):
             self.connect()
             response.success = True
         except Exception as e:
-            log.logger.error(f'Error connecting to database {self.database}, {e}!')
+            logger.error(f'Error connecting to database {self.database}, {e}!')
             response.error_message = str(e)
         finally:
             if response.success is True and need_to_close:
@@ -129,7 +128,7 @@ class MaxDBHandler(DatabaseHandler):
                     response = Response(RESPONSE_TYPE.OK)
                 self.connection.commit()
             except Exception as e:
-                log.logger.error(f'Error running query: {query} on {self.database}!')
+                logger.error(f'Error running query: {query} on {self.database}!')
                 response = Response(
                     RESPONSE_TYPE.ERROR,
                     error_message=str(e)
@@ -184,41 +183,3 @@ class MaxDBHandler(DatabaseHandler):
         df = result.data_frame
         result.data_frame = df.rename(columns={'name': 'column_name', 'type': 'data_type'})
         return self.native_query(query)
-
-
-connection_args = OrderedDict(
-        host={
-            'type': ARG_TYPE.STR,
-            'description': 'The host name or IP address of the SAP MaxDB server.'
-        },
-        port={
-            'type': ARG_TYPE.INT,
-            'description': 'The TCP/IP port of the SAP MaxDB. Must be an integer.'
-        },
-        database={
-            'type': ARG_TYPE.STR,
-            'description': 'The database name to use when connecting with the SAP MaxDB server.'
-        },
-        jdbc_location={
-            'type': ARG_TYPE.STR,
-            'description': 'The location of the jar file which contains the JDBC class.'
-        },
-        user={
-            'type': ARG_TYPE.STR,
-            'description': 'The user name used to authenticate with the SAP MaxDB server.'
-        },
-        password={
-            'type': ARG_TYPE.STR,
-            'description': 'The password to authenticate the user with the SAP MaxDB server.'
-        }
-)
-
-
-connection_args_example = OrderedDict(
-    host='127.0.0.1',
-    port=7210,
-    user='DBADMIN',
-    password='password',
-    database="MAXDB",
-    jdbc_location='/Users/marsid/Desktop/sapdbc.jar',
-)

@@ -163,7 +163,7 @@ class TestMySqlApi(BaseStuff):
     def setup_class(cls):
 
         cls.docker_client = docker.from_env()
-        cls.mysql_image = 'mysql'
+        cls.mysql_image = 'mysql:8.1.0'
         cls.config = json.loads(Path(os.path.join(TEMP_DIR, "config.json")).read_text())
 
         cls.launch_query_tmpl = "mysql --host=%s --port=%s --user=%s --database=mindsdb" % (
@@ -210,7 +210,9 @@ class TestMySqlApi(BaseStuff):
         "show schemas;",
         "show tables;",
         "show tables from mindsdb;",
+        "show tables in mindsdb;",
         "show full tables from mindsdb;",
+        "show full tables in mindsdb;",
         "show variables;",
         "show session status;",
         "show global variables;",

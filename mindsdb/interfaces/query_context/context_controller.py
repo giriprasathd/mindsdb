@@ -2,7 +2,10 @@ from typing import List
 
 import pandas as pd
 
-from mindsdb_sql.parser.ast import Identifier, Select, OrderBy, NullConstant, Constant, BinaryOperation, ASTNode
+from mindsdb_sql.parser.ast import (
+    Identifier, BinaryOperation, Last, Constant, ASTNode
+)
+from mindsdb_sql.planner.utils import query_traversal
 
 from mindsdb.interfaces.storage import db
 from mindsdb.utilities.context import context as ctx
@@ -42,12 +45,15 @@ class QueryContextController:
 
         query_str = l_query.to_string()
 
-        rec = self.__get_context_record(context_name, query_str)
+        rec = self._get_context_record(context_name, query_str)
 
         if rec is None or len(rec.values) == 0:
-            values = self.__get_init_last_values(l_query, dn, session)
+            values = self._get_init_last_values(l_query, dn, session)
             if rec is None:
                 self.__add_context_record(context_name, query_str, values)
+                if context_name.startswith('job-if-'):
+                    # add context for job also
+                    self.__add_context_record(context_name.replace('job-if', 'job'), query_str, values)
             else:
                 rec.values = values
         else:
@@ -57,14 +63,27 @@ class QueryContextController:
 
         query_out = l_query.apply_values(values)
 
-        def callback(data, columns_info):
-            self._result_callback(l_query, context_name, query_str, data, columns_info)
+        def callback(df, columns_info):
+            self._result_callback(l_query, context_name, query_str, df, columns_info)
 
         return query_out, callback
 
+    def remove_lasts(self, query):
+        def replace_lasts(node, **kwargs):
+
+            # find last in where
+            if isinstance(node, BinaryOperation):
+                if isinstance(node.args[0], Identifier) and isinstance(node.args[1], Last):
+                    node.args = [Constant(0), Constant(0)]
+                    node.op = '='
+
+        # find lasts
+        query_traversal(query, replace_lasts)
+        return query
+
     def _result_callback(self, l_query: LastQuery,
                          context_name: str, query_str: str,
-                         data: List[dict], columns_info: list):
+                         df: pd.DataFrame, columns_info: list):
         """
         This function handlers result from executed query and updates context variables with new values
 
@@ -78,10 +97,9 @@ class QueryContextController:
           - columns_info: list
 
         """
-        if len(data) == 0:
+        if len(df) == 0:
             return
 
-        max_vals = pd.DataFrame(data).max().to_dict()
         values = {}
         # get max values
         for info in l_query.get_last_columns():
@@ -89,17 +107,32 @@ class QueryContextController:
             if target_idx is not None:
                 # get by index
                 col_name = columns_info[target_idx]['name']
-                value = max_vals.get(col_name)
             else:
+                col_name = info['column_name']
                 # get by name
-                value = max_vals.get(info['column_name'])
+            if col_name not in df:
+                continue
+
+            column_values = df[col_name].dropna()
+            try:
+                value = max(column_values)
+            except (TypeError, ValueError):
+                try:
+                    # try to convert to float
+                    value = max(map(float, column_values))
+                except (TypeError, ValueError):
+                    try:
+                        # try to convert to str
+                        value = max(map(str, column_values))
+                    except (TypeError, ValueError):
+                        continue
 
             if value is not None:
                 values[info['table_name']] = {info['column_name']: value}
 
         self.__update_context_record(context_name, query_str, values)
 
-    def drop_query_context(self, object_type: str, object_id: int):
+    def drop_query_context(self, object_type: str, object_id: int = None):
         """
         Drop context for object
         :param object_type: type of the object
@@ -114,33 +147,14 @@ class QueryContextController:
             db.session.delete(rec)
         db.session.commit()
 
-    def __get_init_last_values(self, l_query: LastQuery, dn, session) -> dict:
+    def _get_init_last_values(self, l_query: LastQuery, dn, session) -> dict:
         """
         Gets current last values for query.
         Creates and executes query for it:
            'select <col> from <table> order by <col> desc limit 1"
         """
         last_values = {}
-        for info in l_query.get_last_columns():
-            col = Identifier(info['column_name'])
-
-            query = Select(
-                targets=[
-                    col
-                ],
-                from_table=info['table'],
-                order_by=[
-                    OrderBy(col, direction='DESC')
-                ],
-                where=BinaryOperation(
-                    op='is not',
-                    args=[
-                        col,
-                        NullConstant()
-                    ]
-                ),
-                limit=Constant(1)
-            )
+        for query, info in l_query.get_init_queries():
 
             data, columns_info = dn.query(
                 query=query,
@@ -150,7 +164,19 @@ class QueryContextController:
             if len(data) == 0:
                 value = None
             else:
-                value = list(data[0].values())[0]
+                row = list(data.iloc[0])
+
+                idx = None
+                for i, col in enumerate(columns_info):
+                    if col['name'].upper() == info['column_name'].upper():
+                        idx = i
+                        break
+
+                if idx is None or len(row) == 1:
+                    value = row[0]
+                else:
+                    value = row[idx]
+
             if value is not None:
                 last_values[info['table_name']] = {info['column_name']: value}
 
@@ -228,7 +254,7 @@ class QueryContextController:
         return vars
 
     # DB
-    def __get_context_record(self, context_name: str, query_str: str) -> db.QueryContext:
+    def _get_context_record(self, context_name: str, query_str: str) -> db.QueryContext:
         """
         Find and return record for context and query string
         """
@@ -255,7 +281,7 @@ class QueryContextController:
         """
         Updates context record with new values
         """
-        rec = self.__get_context_record(context_name, query_str)
+        rec = self._get_context_record(context_name, query_str)
         rec.values = values
         db.session.commit()
 

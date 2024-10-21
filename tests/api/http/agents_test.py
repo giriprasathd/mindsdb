@@ -1,6 +1,9 @@
 import os
 import pytest
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
+import pandas as pd
 
 from mindsdb.api.http.initialize import initialize_app
 from mindsdb.migrations import migrate
@@ -19,7 +22,7 @@ def app():
         os.environ['MINDSDB_DB_CON'] = db_path
         db.init()
         migrate.migrate_to_head()
-        app = initialize_app(Config(), True, False)
+        app = initialize_app(Config(), True)
 
         # Create an integration database.
         test_client = app.test_client()
@@ -31,7 +34,7 @@ def app():
                 'parameters': {
                     "user": "demo_user",
                     "password": "demo_password",
-                    "host": "3.220.66.106",
+                    "host": "samples.mindsdb.com",
                     "port": "5432",
                     "database": "demo"
                 }
@@ -44,7 +47,7 @@ def app():
         create_query = '''
         CREATE MODEL mindsdb.test_model
         FROM example_db (SELECT * FROM demo_data.home_rentals)
-        PREDICT rental_price
+        PREDICT answer
         '''
         train_data = {
             'query': create_query
@@ -96,6 +99,7 @@ def test_post_agent(client):
             'params': {
                 'k1': 'v1'
             },
+            'provider': 'mindsdb',
             'skills': ['test_skill']
         }
     }
@@ -108,6 +112,7 @@ def test_post_agent(client):
     expected_agent = {
         'name': 'test_post_agent',
         'model_name': 'test_model',
+        'provider': 'mindsdb',
         'params': {
             'k1': 'v1'
         },
@@ -172,6 +177,7 @@ def test_post_agent_project_not_found(client):
             'params': {
                 'k1': 'v1'
             },
+            'provider': 'mindsdb',
             'skills': ['test_skill']
         }
     }
@@ -187,6 +193,7 @@ def test_post_agent_model_not_found(client):
             'params': {
                 'k1': 'v1'
             },
+            'provider': 'mindsdb',
             'skills': ['test_skill']
         }
     }
@@ -202,6 +209,7 @@ def test_post_agent_skill_not_found(client):
             'params': {
                 'k1': 'v1'
             },
+            'provider': 'mindsdb',
             'skills': ['overpowered_skill']
         }
     }
@@ -242,6 +250,7 @@ def test_get_agent(client):
             'params': {
                 'k1': 'v1'
             },
+            'provider': 'mindsdb',
             'skills': ['test_skill']
         }
     }
@@ -260,6 +269,7 @@ def test_get_agent(client):
         },
         'skills': agent['skills'],
         'id': agent['id'],
+        'provider': 'mindsdb',
         'project_id': agent['project_id'],
         'created_at': agent['created_at'],
         'updated_at': agent['updated_at']
@@ -281,6 +291,7 @@ def test_put_agent_create(client):
             'params': {
                 'k1': 'v1'
             },
+            'provider': 'mindsdb',
             'skills': ['test_skill']
         }
     }
@@ -296,6 +307,7 @@ def test_put_agent_create(client):
         'params': {
             'k1': 'v1'
         },
+        'provider': 'mindsdb',
         'skills': created_agent['skills'],
         'id': created_agent['id'],
         'project_id': created_agent['project_id'],
@@ -315,6 +327,7 @@ def test_put_agent_update(client):
                 'k1': 'v1',
                 'k2': 'v2'
             },
+            'provider': 'mindsdb',
             'skills': ['test_skill']
         }
     }
@@ -344,6 +357,7 @@ def test_put_agent_update(client):
             'k1': 'v1.1',
             'k3': 'v3'
         },
+        'provider': 'mindsdb',
         'skills': updated_agent['skills'],
         'id': updated_agent['id'],
         'project_id': updated_agent['project_id'],
@@ -382,6 +396,7 @@ def test_put_agent_model_not_found(client):
                 'k1': 'v1',
                 'k2': 'v2'
             },
+            'provider': 'mindsdb',
             'skills': ['test_skill']
         }
     }
@@ -399,6 +414,7 @@ def test_delete_agent(client):
                 'k1': 'v1',
                 'k2': 'v2'
             },
+            'provider': 'mindsdb',
             'skills': ['test_skill']
         }
     }
@@ -420,3 +436,67 @@ def test_delete_agent_project_not_found(client):
 def test_delete_agent_not_found(client):
     delete_response = client.delete('/api/projects/mindsdb/agents/test_delete_agent_not_found', follow_redirects=True)
     assert '404' in delete_response.status
+
+
+def test_agent_completions(client):
+    create_request = {
+        'agent': {
+            'name': 'test_agent',
+            'model_name': 'test_model',
+            'provider': 'mindsdb',
+            'params': {'prompt_template': 'Test message!',
+                       'user_column': 'content'},
+        }
+    }
+
+    create_response = client.post('/api/projects/mindsdb/agents', json=create_request, follow_redirects=True)
+    assert '201' in create_response.status
+
+    completions_request = {
+        'messages': [
+            {'role': 'user', 'content': 'Test message!'}
+        ]
+    }
+
+    with patch('mindsdb.api.executor.datahub.datahub.InformationSchemaDataNode') as information_schema_datanode_mock:
+        with patch('mindsdb.api.executor.datahub.datanodes.information_schema_datanode.ProjectDataNode') as project_datanode_mock:
+            information_schema_datanode_mock_instance = information_schema_datanode_mock.return_value
+            project_datanode_mock_instance = project_datanode_mock.return_value
+            # Mock underlying model predict return value.
+            project_datanode_mock_instance.predict.return_value = pd.DataFrame([{'answer': 'beepboop'}])
+            information_schema_datanode_mock_instance.get.return_value = project_datanode_mock_instance
+            completions_response = client.post('/api/projects/mindsdb/agents/test_agent/completions', json=completions_request, follow_redirects=True)
+
+            assert '200' in completions_response.status
+            message_json = completions_response.get_json()['message']
+            assert message_json['content'] == 'beepboop'
+
+
+def test_agent_completions_project_not_found(client):
+    completions_request = {
+        'messages': [
+            {'role': 'user', 'content': 'Test message!'}
+        ]
+    }
+    completions_response = client.post('/api/projects/bloop/agents/test_agent/completions', json=completions_request, follow_redirects=True)
+    assert '404' in completions_response.status
+
+
+def test_agent_completions_bad_request(client):
+    completions_request = {
+        'massagez': [
+            {'role': 'user', 'content': 'Test message!'}
+        ]
+    }
+    completions_response = client.post('/api/projects/mindsdb/agents/test_agent/completions', json=completions_request, follow_redirects=True)
+    assert '400' in completions_response.status
+
+
+def test_agent_completions_agent_not_found(client):
+    completions_request = {
+        'messages': [
+            {'role': 'user', 'content': 'Test message!'}
+        ]
+    }
+    completions_response = client.post('/api/projects/mindsdb/agents/zoopy_agent/completions', json=completions_request, follow_redirects=True)
+    assert '404' in completions_response.status

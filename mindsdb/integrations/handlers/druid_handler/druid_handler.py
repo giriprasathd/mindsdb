@@ -1,5 +1,4 @@
 from typing import Optional
-from collections import OrderedDict
 
 import pandas as pd
 from pydruid.db import connect
@@ -17,7 +16,8 @@ from mindsdb.integrations.libs.response import (
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
+
+logger = log.getLogger(__name__)
 
 
 class DruidHandler(DatabaseHandler):
@@ -108,7 +108,7 @@ class DruidHandler(DatabaseHandler):
             self.connect()
             response.success = True
         except Exception as e:
-            log.logger.error(f'Error connecting to Pinot, {e}!')
+            logger.error(f'Error connecting to Pinot, {e}!')
             response.error_message = str(e)
         finally:
             if response.success is True and need_to_close:
@@ -147,7 +147,7 @@ class DruidHandler(DatabaseHandler):
                 connection.commit()
                 response = Response(RESPONSE_TYPE.OK)
         except Exception as e:
-            log.logger.error(f'Error running query: {query} on Pinot!')
+            logger.error(f'Error running query: {query} on Pinot!')
             response = Response(
                 RESPONSE_TYPE.ERROR,
                 error_message=str(e)
@@ -212,50 +212,3 @@ class DruidHandler(DatabaseHandler):
         result.data_frame = df.rename(columns={'COLUMN_NAME': 'column_name', 'DATA_TYPE': 'data_type'})
 
         return result
-
-
-connection_args = OrderedDict(
-    host={
-        'type': ARG_TYPE.STR,
-        'description': 'The host name or IP address of Apache Druid.',
-        'required': True,
-        'label': 'Host'
-    },
-    port={
-        'type': ARG_TYPE.INT,
-        'description': 'The port that Apache Druid is running on.',
-        'required': True,
-        'label': 'Port'
-    },
-    path={
-        'type': ARG_TYPE.STR,
-        'description': 'The query path.',
-        'required': True,
-        'label': 'path'
-    },
-    scheme={
-        'type': ARG_TYPE.STR,
-        'description': 'The URI schema. This parameter is optional and the default will be http.',
-        'required': False,
-        'label': 'Scheme'
-    },
-    user={
-        'type': ARG_TYPE.STR,
-        'description': 'The user name used to authenticate with Apache Druid. This parameter is optional.',
-        'required': False,
-        'label': 'User'
-    },
-    password={
-        'type': ARG_TYPE.STR,
-        'description': 'The password used to authenticate with Apache Druid. This parameter is optional.',
-        'required': False,
-        'label': 'password'
-    }
-)
-
-connection_args_example = OrderedDict(
-    host='localhost',
-    port=8888,
-    path='/druid/v2/sql/',
-    scheme='http'
-)

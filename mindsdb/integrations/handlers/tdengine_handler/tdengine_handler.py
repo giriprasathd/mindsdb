@@ -1,4 +1,3 @@
-from collections import OrderedDict
 from typing import Optional
 import pandas as pd
 import taosrest as td
@@ -8,18 +7,16 @@ from mindsdb_sql import parse_sql
 from mindsdb_sql.render.sqlalchemy_render import SqlalchemyRender
 from mindsdb_sql.parser.ast.base import ASTNode
 
-from mindsdb.utilities.log import get_log
+from mindsdb.utilities import log
 from mindsdb.integrations.libs.base import DatabaseHandler
 from mindsdb.integrations.libs.response import (
     HandlerStatusResponse as StatusResponse,
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
 
 
-log = get_log()
-
+logger = log.getLogger(__name__)
 
 class TDEngineHandler(DatabaseHandler):
     """
@@ -73,7 +70,7 @@ class TDEngineHandler(DatabaseHandler):
             connection = self.connect()
             result.success = connection is not None
         except Exception as e:
-            log.error(f'Error connecting to TDEngine {self.connection_data["database"]}, {e}!')
+            logger.error(f'Error connecting to TDEngine {self.connection_data["database"]}, {e}!')
             result.error_message = str(e)
 
         if result.success is True and need_to_close:
@@ -110,7 +107,7 @@ class TDEngineHandler(DatabaseHandler):
                     response = Response(RESPONSE_TYPE.OK)
                 connection.commit()
         except Exception as e:
-                log.error(f'Error running query: {query} on {self.connection_data["database"]}!')
+                logger.error(f'Error running query: {query} on {self.connection_data["database"]}!')
                 response = Response(
                     RESPONSE_TYPE.ERROR,
                     error_message=str(e)
@@ -147,37 +144,3 @@ class TDEngineHandler(DatabaseHandler):
 
         
         return self.native_query(q)
-
-
-connection_args = OrderedDict(
-    user={
-        'type': ARG_TYPE.STR,
-        'description': 'The user name used to authenticate with the TDEngine server.'
-    },
-    password={
-        'type': ARG_TYPE.STR,
-        'description': 'The password to authenticate the user with the TDEngine server.'
-    },
-    database={
-        'type': ARG_TYPE.STR,
-        'description': 'The database name to use when connecting with the TDEngine server.'
-    },
-    url={
-        'type': ARG_TYPE.STR,
-        'description': 'The url of the TDEngine server Instance. '
-    },
-    token={
-        'type': ARG_TYPE.INT,
-        'description': 'Unique Token to COnnect TDEngine'
-    },
-
-
-)
-
-connection_args_example = OrderedDict(
-    url='127.0.0.1:6041',
-    token='<token comes here>',
-    user='root',
-    password='taosdata',
-    database='test'
-)

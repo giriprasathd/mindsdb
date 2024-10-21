@@ -1,28 +1,41 @@
-from typing import List, Optional
+from typing import Text, List, Dict
 import random
 import time
 import math
 
 import openai
+from openai import OpenAI
+
 import tiktoken
 
 import mindsdb.utilities.profiler as profiler
-from mindsdb.integrations.handlers.openai_handler.models import ALL_MODELS as ALL_VALID_MODELS
+
+
+class PendingFT(openai.OpenAIError):
+    """
+    Custom exception to handle pending fine-tuning status.
+    """
+    message: str
+
+    def __init__(self, message) -> None:
+        super().__init__()
+        self.message = message
 
 
 def retry_with_exponential_backoff(
-        initial_delay: float = 1,
-        hour_budget: float = 0.3,
-        jitter: bool = False,
-        exponential_base: int = 2,
-        errors: tuple = (openai.error.RateLimitError, openai.error.APIConnectionError),
+    initial_delay: float = 1,
+    hour_budget: float = 0.3,
+    jitter: bool = False,
+    exponential_base: int = 2,
+    wait_errors: tuple = (openai.APITimeoutError, openai.APIConnectionError, PendingFT),
+    status_errors: tuple = (openai.APIStatusError, openai.APIResponseValidationError),
 ):
     """
     Wrapper to enable optional arguments. It means this decorator always needs to be called with parenthesis:
-    
+
     > @retry_with_exponential_backoff()  # optional argument override here
     > def f(): [...]
-    
+
     """  # noqa
 
     @profiler.profile()
@@ -33,6 +46,18 @@ def retry_with_exponential_backoff(
 
         Slight changes in the implementation, but originally from:
         https://github.com/openai/openai-cookbook/blob/main/examples/How_to_handle_rate_limits.ipynb
+
+        Args:
+            func: Function to be wrapped
+            initial_delay: Initial delay in seconds
+            hour_budget: Hourly budget in seconds
+            jitter: Adds randomness to the delay
+            exponential_base: Base for the exponential backoff
+            wait_errors: Tuple of errors to retry on
+            status_errors: Tuple of status errors to raise
+
+        Returns:
+            Wrapper function with exponential backoff
         """  # noqa
 
         def wrapper(*args, **kwargs):
@@ -42,8 +67,9 @@ def retry_with_exponential_backoff(
             if isinstance(hour_budget, float) or isinstance(hour_budget, int):
                 try:
                     max_retries = round(
-                        (math.log((hour_budget * 3600) / initial_delay)) /
-                        math.log(exponential_base))
+                        (math.log((hour_budget * 3600) / initial_delay))
+                        / math.log(exponential_base)
+                    )
                 except ValueError:
                     max_retries = 10
             else:
@@ -53,16 +79,13 @@ def retry_with_exponential_backoff(
             while True:
                 try:
                     return func(*args, **kwargs)
-                except errors as e:
-                    if e.error is not None:
-                        if e.error['type'] == 'invalid_request_error' and \
-                                'Too many parallel completions' in e.error['message'] or \
-                                'Please reduce the length of the messages' in e.error['message']:
-                            raise e  # InvalidRequestError triggers batched mode in the previous call
-                        if e.error['type'] == 'insufficient_quota':
-                            raise Exception(
-                                'API key has exceeded its quota, please try 1) increasing it or 2) using another key.')  # noqa
 
+                except status_errors as e:
+                    raise Exception(
+                        f'Error status {e.status_code} raised by OpenAI API: {e.body.get("message", "Please refer to `https://platform.openai.com/docs/guides/error-codes` for more information.")}'   # noqa
+                    )  # noqa
+
+                except wait_errors:
                     num_retries += 1
                     if num_retries > max_retries:
                         raise Exception(
@@ -72,11 +95,10 @@ def retry_with_exponential_backoff(
                     delay *= exponential_base * (1 + jitter * random.random())
                     time.sleep(delay)
 
-                except openai.error.OpenAIError as e:
-                    if e.error is not None and e.error['type'] == 'insufficient_quota':
-                        raise Exception(
-                            'API key has exceeded its quota, please try 1) increasing it or 2) using another key.')  # noqa
-                    raise e
+                except openai.OpenAIError as e:
+                    raise Exception(
+                        f'General {str(e)} error raised by OpenAI. Please refer to `https://platform.openai.com/docs/guides/error-codes` for more information.'    # noqa
+                    )
 
                 except Exception as e:
                     raise e
@@ -86,17 +108,38 @@ def retry_with_exponential_backoff(
     return _retry_with_exponential_backoff
 
 
-def truncate_msgs_for_token_limit(messages, model_name, max_tokens, truncate='first'):
-    """ 
+def truncate_msgs_for_token_limit(messages: List[Dict], model_name: Text, max_tokens: int, truncate: Text = 'first'):
+    """
     Truncates message list to fit within the token limit.
-    Note: first message for chat completion models are general directives with the system role, which will ideally be kept at all times. 
+    The first message for chat completion models are general directives with the system role, which will ideally be kept at all times.
+
+    Slight changes in the implementation, but originally from:
+    https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb
+
+    Args:
+        messages (List[Dict]): List of messages
+        model_name (Text): Model name
+        max_tokens (int): Maximum token limit
+        truncate (Text): Truncate strategy, either 'first' or 'last'
+
+    Returns:
+        List[Dict]: Truncated message list
     """  # noqa
-    encoder = tiktoken.encoding_for_model(model_name)
+    try:
+        encoder = tiktoken.encoding_for_model(model_name)
+    except KeyError:
+        # If the encoding is not found, defualt to cl100k_base.
+        # This is applicable for handlers that extend the OpenAI handler such as Anyscale.
+        model_name = 'gpt-3.5-turbo-0301'
+        encoder = tiktoken.get_encoding('cl100k_base')
+
     sys_priming = messages[0:1]
     n_tokens = count_tokens(messages, encoder, model_name)
     while n_tokens > max_tokens:
         if len(messages) == 2:
-            return messages[:-1]  # edge case: if limit is surpassed by just one input, we remove initial instruction
+            return messages[
+                :-1
+            ]  # edge case: if limit is surpassed by just one input, we remove initial instruction
         elif len(messages) == 1:
             return messages
 
@@ -109,12 +152,23 @@ def truncate_msgs_for_token_limit(messages, model_name, max_tokens, truncate='fi
     return messages
 
 
-def count_tokens(messages, encoder, model_name='gpt-3.5-turbo-0301'):
-    """ Original token count implementation can be found in the OpenAI cookbook. """
-    if "gpt-3.5-turbo" in model_name:  # note: future models may deviate from this (only 0301 really complies)
+def count_tokens(messages: List[Dict], encoder: tiktoken.core.Encoding, model_name: Text = 'gpt-3.5-turbo-0301'):
+    """
+    Counts the number of tokens in a list of messages.
+
+    Args:
+        messages: List of messages
+        encoder: Tokenizer
+        model_name: Model name
+    """
+    if (
+        "gpt-3.5-turbo" in model_name
+    ):  # note: future models may deviate from this (only 0301 really complies)
         num_tokens = 0
         for message in messages:
-            num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
+            num_tokens += (
+                4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
+            )
             for key, value in message.items():
                 num_tokens += len(encoder.encode(value))
                 if key == "name":  # if there's a name, the role is omitted
@@ -122,24 +176,22 @@ def count_tokens(messages, encoder, model_name='gpt-3.5-turbo-0301'):
         num_tokens += 2  # every reply is primed with <im_start>assistant
         return num_tokens
     else:
-        raise NotImplementedError(f"""_count_tokens() is not presently implemented for model {model_name}.""")
+        raise NotImplementedError(
+            f"""_count_tokens() is not presently implemented for model {model_name}."""
+        )
 
 
-def get_available_models(api_key: str, finetune_suffix: Optional[str] = None) -> List[str]:
+def get_available_models(api_key: Text, api_base: Text) -> List[Text]:
     """
-        Helper method that returns available models for
-            - a given API key and
-            - a finetune suffix (which is unique per each MindsDB user)
-    """
-    def _get_user_fts(model: str) -> bool:
-        if ':ft-' in model and f':{finetune_suffix}' in model:  # follows legacy naming (should change with #7387)
-            return True
-        else:
-            return False
+    Returns a list of available openai models for the given API key.
 
-    models = ALL_VALID_MODELS
-    user_models = [m.openai_id for m in openai.Model.list(api_key=api_key).data]
-    if finetune_suffix is not None:
-        user_models = list(filter(_get_user_fts, user_models))
-        models.extend(user_models)
-    return models
+    Args:
+        api_key (Text): OpenAI API key
+        api_base (Text): OpenAI API base URL
+
+    Returns:
+        List[Text]: List of available models
+    """
+    res = OpenAI(api_key=api_key, base_url=api_base).models.list()
+
+    return [models.id for models in res.data]

@@ -1,1 +1,2 @@
-pymsteams
+botframework-connector
+botbuilder-schema

@@ -1,5 +1,4 @@
 from typing import Optional
-from collections import OrderedDict
 
 import pandas as pd
 import duckdb
@@ -9,16 +8,15 @@ from mindsdb.integrations.libs.base import DatabaseHandler
 
 from mindsdb_sql.parser.ast.base import ASTNode
 
-from mindsdb.utilities.log import get_log
+from mindsdb.utilities import log
 from mindsdb.integrations.libs.response import (
     HandlerStatusResponse as StatusResponse,
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
 
 
-log = get_log()
+logger = log.getLogger(__name__)
 
 
 class SheetsHandler(DatabaseHandler):
@@ -87,7 +85,7 @@ class SheetsHandler(DatabaseHandler):
             self.connect()
             response.success = True
         except Exception as e:
-            log.error(f'Error connecting to the Google Sheet with ID {self.connection_data["spreadsheet_id"]}, {e}!')
+            logger.error(f'Error connecting to the Google Sheet with ID {self.connection_data["spreadsheet_id"]}, {e}!')
             response.error_message = str(e)
         finally:
             if response.success is True and need_to_close:
@@ -119,7 +117,7 @@ class SheetsHandler(DatabaseHandler):
                 response = Response(RESPONSE_TYPE.OK)
                 connection.commit()
         except Exception as e:
-            log.error(f'Error running query: {query} on the Google Sheet with ID {self.connection_data["spreadsheet_id"]}!')
+            logger.error(f'Error running query: {query} on the Google Sheet with ID {self.connection_data["spreadsheet_id"]}!')
             response = Response(
                 RESPONSE_TYPE.ERROR,
                 error_message=str(e)
@@ -176,20 +174,3 @@ class SheetsHandler(DatabaseHandler):
         )
 
         return response
-
-
-connection_args = OrderedDict(
-    spreadsheet_id={
-        'type': ARG_TYPE.STR,
-        'description': 'The unique ID of the Google Sheet.'
-    },
-    sheet_name={
-        'type': ARG_TYPE.STR,
-        'description': 'The name of the sheet within the Google Sheet.'
-    }
-)
-
-connection_args_example = OrderedDict(
-    spreadsheet_id='12wgS-1KJ9ymUM-6VYzQ0nJYGitONxay7cMKLnEE2_d0',
-    sheet_name='iris'
-)

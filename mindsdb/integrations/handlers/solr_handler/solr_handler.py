@@ -1,9 +1,7 @@
 from typing import Optional
-from collections import OrderedDict
 import pandas as pd
 
 from sqlalchemy import create_engine
-import sqlalchemy_solr
 
 from mindsdb_sql import parse_sql
 from mindsdb_sql.parser.ast.base import ASTNode
@@ -15,8 +13,9 @@ from mindsdb.integrations.libs.response import (
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
 
+
+logger = log.getLogger(__name__)
 
 class SolrHandler(DatabaseHandler):
     """
@@ -101,7 +100,7 @@ class SolrHandler(DatabaseHandler):
             self.connect()
             response.success = True
         except Exception as e:
-            log.logger.error(f'Error connecting to Solr {self.connection_data["host"]}, {e}!')
+            logger.error(f'Error connecting to Solr {self.connection_data["host"]}, {e}!')
             response.error_message = str(e)
 
         if response.success is True and need_to_close:
@@ -139,7 +138,7 @@ class SolrHandler(DatabaseHandler):
                 response = Response(RESPONSE_TYPE.OK)
 
         except Exception as e:
-            log.logger.error(f'Error running query: {query} on {self.connection_data["host"]}!')
+            logger.error(f'Error running query: {query} on {self.connection_data["host"]}!')
             response = Response(
                 RESPONSE_TYPE.ERROR,
                 error_message=str(e)
@@ -175,45 +174,3 @@ class SolrHandler(DatabaseHandler):
         df = pd.DataFrame([[col] for col in result.data_frame.columns])
         result.data_frame = df.rename(columns={df.columns[0]: 'column_name'})
         return result
-
-
-connection_args = OrderedDict(
-    username={
-        'type': ARG_TYPE.STR,
-        'description': 'The user name used to authenticate with the Solr server.'
-    },
-    password={
-        'type': ARG_TYPE.STR,
-        'description': 'The password to authenticate the user with the Solr server.'
-    },
-    host={
-        'type': ARG_TYPE.STR,
-        'description': 'The host name or IP address of the Solr server. NOTE: use \'127.0.0.1\' instead of \'localhost\' to connect to local server.'
-    },
-    port={
-        'type': ARG_TYPE.INT,
-        'description': 'The TCP/IP port of the Solr server. Must be an integer.'
-    },
-    server_path={
-        'type': ARG_TYPE.STR,
-        'description': 'The server path connecting with the Solr server. Defaults to solr when not provided.'
-    },
-    collection={
-        'type': ARG_TYPE.STR,
-        'description': 'The collection name to use for the query in the Solr server.'
-    },
-    use_ssl={
-        'type': ARG_TYPE.BOOL,
-        'description': 'The flag to set ssl for the query in the Solr server.Defaults to false.'
-    }
-)
-
-connection_args_example = OrderedDict(
-    username = "demo_user",
-    password =  "demo_password",
-    host = "127.0.0.1",
-    port = 8981,
-    server_path = "solr",
-    collection = "gettingstarted",
-    use_ssl = False,
-)

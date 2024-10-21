@@ -6,11 +6,11 @@ from mindsdb.integrations.libs.api_handler import APITable
 
 from mindsdb_sql.parser import ast
 
-from mindsdb.integrations.handlers.utilities.query_utilities import SELECTQueryParser, SELECTQueryExecutor
+from mindsdb.integrations.utilities.handlers.query_utilities import SELECTQueryParser, SELECTQueryExecutor
 
-from mindsdb.utilities.log import get_log
+from mindsdb.utilities import log
 
-logger = get_log("integrations.mediawiki_handler")
+logger = log.getLogger(__name__)
 
 
 class PagesTable(APITable):

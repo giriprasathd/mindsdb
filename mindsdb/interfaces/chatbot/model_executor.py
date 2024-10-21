@@ -1,4 +1,5 @@
 import datetime as dt
+import pandas as pd
 
 from mindsdb.interfaces.storage import db
 
@@ -36,12 +37,11 @@ class ModelExecutor:
             raise BotException('Not supported')
 
         messages = self._chat_history_to_conversation(history, model_info)
-
         if model_info['engine'] == 'langchain':
 
-            tools = []
+            all_tools = []
             for function in functions:
-                tools.append({
+                all_tools.append({
                     'name': function.name,
                     'func': function.callback,
                     'description': function.description
@@ -54,18 +54,18 @@ class ModelExecutor:
             context = '\n'.join(context_list)
 
             # call model
-            params = {'tools': tools, 'context': context, 'prompt': self.prompt}
+            params = {'tools': all_tools, 'context': context, 'prompt': self.prompt}
 
             predictions = self.chat_task.project_datanode.predict(
                 model_name=model_info['model_name'],
-                data=messages,
+                df=pd.DataFrame(messages),
                 params=params
             )
 
         elif model_info['engine'] == 'llama_index':
             predictions = self.chat_task.project_datanode.predict(
                 model_name=model_info['model_name'],
-                data=messages,
+                df=pd.DataFrame(messages),
                 params={'prompt': self.prompt}
             )
 

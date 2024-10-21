@@ -1,5 +1,4 @@
 from typing import Optional
-from collections import OrderedDict
 
 import pandas as pd
 import fdb
@@ -17,7 +16,8 @@ from mindsdb.integrations.libs.response import (
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
+
+logger = log.getLogger(__name__)
 
 
 class FirebirdHandler(DatabaseHandler):
@@ -94,7 +94,7 @@ class FirebirdHandler(DatabaseHandler):
             self.connect()
             response.success = True
         except Exception as e:
-            log.logger.error(f'Error connecting to Firebird {self.connection_data["database"]}, {e}!')
+            logger.error(f'Error connecting to Firebird {self.connection_data["database"]}, {e}!')
             response.error_message = str(e)
         finally:
             if response.success is True and need_to_close:
@@ -133,7 +133,7 @@ class FirebirdHandler(DatabaseHandler):
                 connection.commit()
                 response = Response(RESPONSE_TYPE.OK)
         except Exception as e:
-            log.logger.error(f'Error running query: {query} on {self.connection_data["database"]}!')
+            logger.error(f'Error running query: {query} on {self.connection_data["database"]}!')
             response = Response(
                 RESPONSE_TYPE.ERROR,
                 error_message=str(e)
@@ -238,33 +238,3 @@ class FirebirdHandler(DatabaseHandler):
         df = result.data_frame
         result.data_frame = df.rename(columns={'FIELD_NAME': 'column_name', 'FIELD_TYPE': 'data_type'})
         return result
-
-
-connection_args = OrderedDict(
-    host={
-        'type': ARG_TYPE.STR,
-        'description': 'The host name or IP address of the Firebird server.'
-    },
-    database={
-        'type': ARG_TYPE.STR,
-        'description': """
-            The database name to use when connecting with the Firebird server. NOTE: use double backslashes (\\) for the 
-            database path on a Windows machine.
-        """
-    },
-    user={
-        'type': ARG_TYPE.STR,
-        'description': 'The user name used to authenticate with the Firebird server.'
-    },
-    password={
-        'type': ARG_TYPE.STR,
-        'description': 'The password to authenticate the user with the Firebird server.'
-    }
-)
-
-connection_args_example = OrderedDict(
-    host='localhost',
-    database='/temp/test.db',
-    user='sysdba',
-    password='password'
-)

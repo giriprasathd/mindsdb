@@ -1,5 +1,6 @@
 import github
-from collections import OrderedDict
+
+from mindsdb_sql import parse_sql
 
 from mindsdb.integrations.handlers.github_handler.github_tables import (
     GithubIssuesTable,
@@ -7,21 +8,19 @@ from mindsdb.integrations.handlers.github_handler.github_tables import (
     GithubCommitsTable,
     GithubReleasesTable,
     GithubBranchesTable,
-    GithubContributorsTable
+    GithubContributorsTable,
+    GithubMilestonesTable,
+    GithubProjectsTable, GithubFilesTable
 )
 
 from mindsdb.integrations.libs.api_handler import APIHandler
 from mindsdb.integrations.libs.response import (
     HandlerStatusResponse as StatusResponse,
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
-
-from mindsdb.utilities.log import get_log
-from mindsdb_sql import parse_sql
+from mindsdb.utilities import log
 
 
-logger = get_log("integrations.github_handler")
-
+logger = log.getLogger(__name__)
 
 class GithubHandler(APIHandler):
     """The GitHub handler implementation"""
@@ -44,18 +43,15 @@ class GithubHandler(APIHandler):
         self.connection = None
         self.is_connected = False
 
-        github_issues_data = GithubIssuesTable(self)
-        github_pull_requests_data = GithubPullRequestsTable(self)
-        github_commits_data = GithubCommitsTable(self)
-        github_releases_data = GithubReleasesTable(self)
-        github_branches_data = GithubBranchesTable(self)
-        github_contributors_data = GithubContributorsTable(self)
-        self._register_table("issues", github_issues_data)
-        self._register_table("pull_requests", github_pull_requests_data)
-        self._register_table("commits", github_commits_data)
-        self._register_table("releases", github_releases_data)
-        self._register_table("branches", github_branches_data)
-        self._register_table("contributors", github_contributors_data)
+        self._register_table("issues", GithubIssuesTable(self))
+        self._register_table("pull_requests", GithubPullRequestsTable(self))
+        self._register_table("commits", GithubCommitsTable(self))
+        self._register_table("releases", GithubReleasesTable(self))
+        self._register_table("branches", GithubBranchesTable(self))
+        self._register_table("contributors", GithubContributorsTable(self))
+        self._register_table("milestones", GithubMilestonesTable(self))
+        self._register_table("projects", GithubProjectsTable(self))
+        self._register_table("files", GithubFilesTable(self))
 
     def connect(self) -> StatusResponse:
         """Set up the connection required by the handler.
@@ -65,6 +61,9 @@ class GithubHandler(APIHandler):
         StatusResponse
             connection object
         """
+
+        if self.is_connected is True:
+            return self.connection
 
         connection_kwargs = {}
 
@@ -123,31 +122,3 @@ class GithubHandler(APIHandler):
         """
         ast = parse_sql(query, dialect="mindsdb")
         return self.query(ast)
-
-
-connection_args = OrderedDict(
-    repository={
-        "type": ARG_TYPE.STR,
-        "description": " GitHub repository name.",
-        "required": True,
-        "label": "Repository",
-    },
-    api_key={
-        "type": ARG_TYPE.PWD,
-        "description": "Optional GitHub API key to use for authentication.",
-        "required": False,
-        "label": "Api key",
-    },
-    github_url={
-        "type": ARG_TYPE.STR,
-        "description": "Optional GitHub URL to connect to a GitHub Enterprise instance.",
-        "required": False,
-        "label": "Github url",
-    },
-)
-
-connection_args_example = OrderedDict(
-    repository="mindsdb/mindsdb", 
-    api_key="ghp_z91InCQZWZAMlddOzFCX7xHJrf9Fai35HT7", 
-    github_url="https://github.com/mindsdb/mindsdb"
-)

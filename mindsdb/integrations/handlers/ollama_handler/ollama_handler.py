@@ -5,13 +5,12 @@ from typing import Dict, Optional
 import pandas as pd
 
 from mindsdb.integrations.libs.base import BaseMLEngine
-from mindsdb.integrations.libs.llm_utils import get_completed_prompts
+from mindsdb.integrations.libs.llm.utils import get_completed_prompts
 
 
 class OllamaHandler(BaseMLEngine):
     name = "ollama"
-    SERVE_URL = 'http://localhost:11434'
-    MODEL_LIST_URL = 'https://registry.ollama.ai/v2/_catalog'
+    DEFAULT_SERVE_URL = "http://localhost:11434"
 
     @staticmethod
     def create_validation(target, args=None, **kwargs):
@@ -20,21 +19,12 @@ class OllamaHandler(BaseMLEngine):
         else:
             args = args['using']
 
-        # check model version is valid
-        try:
-            all_models = requests.get(OllamaHandler.MODEL_LIST_URL).json()['repositories']
-        except Exception as e:
-            raise Exception(f"Could not retrieve model list from Ollama registry: {e}")
-        base_models = list(filter(lambda x: 'library/' in x, all_models))
-        valid_models = [m.split('/')[-1] for m in base_models]
-
         if 'model_name' not in args:
             raise Exception('`model_name` must be provided in the USING clause.')
-        elif args['model_name'] not in valid_models:
-            raise Exception(f"The model `{args['model_name']}` is not yet supported by Ollama! Please choose one of the following: {valid_models}")  # noqa
 
         # check ollama service health
-        status = requests.get(OllamaHandler.SERVE_URL + '/api/tags').status_code
+        connection = args.get('ollama_serve_url', OllamaHandler.DEFAULT_SERVE_URL)
+        status = requests.get(connection + '/api/tags').status_code
         if status != 200:
             raise Exception(f"Ollama service is not working (status `{status}`). Please double check it is running and try again.")  # noqa
 
@@ -43,13 +33,55 @@ class OllamaHandler(BaseMLEngine):
         # arg setter
         args = args['using']
         args['target'] = target
-        self.model_storage.json_set('args', args)
+        connection = args.get('ollama_serve_url', OllamaHandler.DEFAULT_SERVE_URL)
 
-        # download model
-        # TODO v2: point Ollama to the engine storage folder instead of their default location
-        model_name = args['model_name']
-        # blocking operation, finishes once model has been fully pulled and served
-        requests.post(OllamaHandler.SERVE_URL + '/api/pull', json={'name': model_name})
+        def _model_check():
+            """ Checks model has been pulled and that it works correctly. """
+            responses = {}
+            for endpoint in ['generate', 'embeddings']:
+                try:
+                    code = requests.post(
+                        connection + f'/api/{endpoint}',
+                        json={
+                            'model': args['model_name'],
+                            'prompt': 'Hello.',
+                        }
+                    ).status_code
+                    responses[endpoint] = code
+                except Exception:
+                    responses[endpoint] = 500
+            return responses
+
+        # check model for all supported endpoints
+        responses = _model_check()
+        if 200 not in responses.values():
+            # pull model (blocking operation) and serve
+            # TODO: point to the engine storage folder instead of default location
+            connection = args.get('ollama_serve_url', OllamaHandler.DEFAULT_SERVE_URL)
+            requests.post(connection + '/api/pull', json={'name': args['model_name']})
+            # try one last time
+            responses = _model_check()
+            if 200 not in responses.values():
+                raise Exception(f"Ollama model `{args['model_name']}` is not working correctly. Please try pulling this model manually, check it works correctly and try again.")  # noqa
+        else:
+            supported_modes = {k: True if v == 200 else False for k, v in responses.items()}
+
+        # check if a mode has been provided and if it is valid
+        runnable_modes = [mode for mode, supported in supported_modes.items() if supported]
+        if 'mode' in args:
+            if args['mode'] not in runnable_modes:
+                raise Exception(f"Mode `{args['mode']}` is not supported by the model `{args['model_name']}`.")
+        
+        # if a mode has not been provided, check if the model supports only one mode
+        # if it does, set it as the default mode
+        # if it supports multiple modes, set the default mode to 'generate'
+        else:
+            if len(runnable_modes) == 1:
+                args['mode'] = runnable_modes[0]
+            else:
+                args['mode'] = 'generate'
+
+        self.model_storage.json_set('args', args)
 
     def predict(self, df: pd.DataFrame, args: Optional[Dict] = None) -> pd.DataFrame:
         """
@@ -66,35 +98,43 @@ class OllamaHandler(BaseMLEngine):
         model_name, target_col = args['model_name'], args['target']
         prompt_template = pred_args.get('prompt_template',
                                         args.get('prompt_template', 'Answer the following question: {{{{text}}}}'))
-        # TODO v2: add support for overriding modelfile params (e.g. temperature)
 
         # prepare prompts
         prompts, empty_prompt_ids = get_completed_prompts(prompt_template, df)
         df['__mdb_prompt'] = prompts
 
+        # setup endpoint
+        endpoint = args.get('mode', 'generate')
+
         # call llm
         completions = []
         for i, row in df.iterrows():
             if i not in empty_prompt_ids:
+                connection = args.get('ollama_serve_url', OllamaHandler.DEFAULT_SERVE_URL)
                 raw_output = requests.post(
-                    OllamaHandler.SERVE_URL + '/api/generate',
+                    connection + f'/api/{endpoint}',
                     json={
-                        'model': args['model_name'],
+                        'model': model_name,
                         'prompt': row['__mdb_prompt'],
                     }
                 )
-                out_tokens = raw_output.content.decode().split('\n')  # stream of output tokens
+                lines = raw_output.content.decode().split('\n')  # stream of output tokens
 
-                tokens = []
-                for o in out_tokens:
-                    if o != '':
-                        # TODO v2: add support for storing `context` short conversational memory
-                        info = json.loads(o)
+                values = []
+                for line in lines:
+                    if line != '':
+                        info = json.loads(line)
                         if 'response' in info:
                             token = info['response']
-                            tokens.append(token)
+                            values.append(token)
+                        elif 'embedding' in info:
+                            embedding = info['embedding']
+                            values.append(embedding)
 
-                completions.append(''.join(tokens))
+                if endpoint == 'embeddings':
+                    completions.append(values)
+                else:
+                    completions.append(''.join(values))
             else:
                 completions.append('')
 
@@ -113,13 +153,14 @@ class OllamaHandler(BaseMLEngine):
 
         # get model info
         else:
-            model_info = requests.post(OllamaHandler.SERVE_URL + '/api/show', json={'name': model_name}).json()
+            connection = args.get('ollama_serve_url', OllamaHandler.DEFAULT_SERVE_URL)
+            model_info = requests.post(connection + '/api/show', json={'name': model_name}).json()
             return pd.DataFrame([[
                 model_name,
-                model_info['license'],
-                model_info['modelfile'],
-                model_info['parameters'],
-                model_info['template'],
+                model_info.get('license', 'N/A'),
+                model_info.get('modelfile', 'N/A'),
+                model_info.get('parameters', 'N/A'),
+                model_info.get('template', 'N/A'),
             ]],
                 columns=[
                     'model_type',

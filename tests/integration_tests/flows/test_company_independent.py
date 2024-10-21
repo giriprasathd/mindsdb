@@ -5,9 +5,9 @@ import pytest
 
 from pymongo import MongoClient
 
-from mindsdb.api.mysql.mysql_proxy.libs.constants.response_type import RESPONSE_TYPE
+from mindsdb.api.executor.data_types.response_type import RESPONSE_TYPE
 from .conftest import CONFIG_PATH
-from .http_test_helpers import HTTPHelperMixin
+from tests.utils.http_test_helpers import HTTPHelperMixin
 
 # used by mindsdb_app fixture in conftest
 OVERRIDE_CONFIG = {
@@ -72,7 +72,7 @@ class TestCompanyIndependent(HTTPHelperMixin):
         # add permanent integrations
         for cid in [CID_A, CID_B]:
             databases_names = self.get_db_names(cid)
-            assert len(databases_names) == 1 and databases_names[0] == 'information_schema'
+            assert len(databases_names) == 2 and 'information_schema' in databases_names and 'log' in databases_names
             self.sql_via_http(
                 "CREATE DATABASE files ENGINE='files'",
                 company_id=cid,
@@ -82,7 +82,8 @@ class TestCompanyIndependent(HTTPHelperMixin):
             self.assert_list(
                 databases_names, {
                     'information_schema',
-                    'files'
+                    'files',
+                    'log'
                 }
             )
             self.sql_via_http(
@@ -95,7 +96,8 @@ class TestCompanyIndependent(HTTPHelperMixin):
                 databases_names, {
                     'information_schema',
                     'mindsdb',
-                    'files'
+                    'files',
+                    'log'
                 }
             )
 
@@ -121,6 +123,7 @@ class TestCompanyIndependent(HTTPHelperMixin):
                 'information_schema',
                 'mindsdb',
                 'files',
+                'log',
                 'test_integration_a'
             }
         )
@@ -130,7 +133,8 @@ class TestCompanyIndependent(HTTPHelperMixin):
             databases_names_b, {
                 'information_schema',
                 'mindsdb',
-                'files'
+                'files',
+                'log'
             }
         )
 
@@ -150,6 +154,7 @@ class TestCompanyIndependent(HTTPHelperMixin):
                 'information_schema',
                 'mindsdb',
                 'files',
+                'log',
                 'test_integration_a'
             }
         )
@@ -160,6 +165,7 @@ class TestCompanyIndependent(HTTPHelperMixin):
                 'information_schema',
                 'mindsdb',
                 'files',
+                'log',
                 'test_integration_b'
             }
         )
@@ -177,7 +183,8 @@ class TestCompanyIndependent(HTTPHelperMixin):
             databases_names_a, {
                 'information_schema',
                 'mindsdb',
-                'files'
+                'files',
+                'log'
             }
         )
 
@@ -187,6 +194,7 @@ class TestCompanyIndependent(HTTPHelperMixin):
                 'information_schema',
                 'mindsdb',
                 'files',
+                'log',
                 'test_integration_b'
             }
         )
@@ -207,6 +215,7 @@ class TestCompanyIndependent(HTTPHelperMixin):
                 'information_schema',
                 'mindsdb',
                 'files',
+                'log',
                 'test_integration_a'
             }
         )
@@ -217,6 +226,7 @@ class TestCompanyIndependent(HTTPHelperMixin):
                 'information_schema',
                 'mindsdb',
                 'files',
+                'log',
                 'test_integration_b'
             }
         )
@@ -227,12 +237,7 @@ class TestCompanyIndependent(HTTPHelperMixin):
             tables = self.get_tables_in('mindsdb', cid)
             self.assert_list(
                 tables, {
-                    'jobs',
-                    'jobs_history',
                     'models',
-                    'models_versions',
-                    'mdb_triggers',
-                    'chatbots',
                 }
             )
         # endregion
@@ -290,12 +295,7 @@ class TestCompanyIndependent(HTTPHelperMixin):
             tables = self.get_tables_in('mindsdb', cid)
             self.assert_list(
                 tables, {
-                    'jobs',
-                    'jobs_history',
                     'models',
-                    'models_versions',
-                    'mdb_triggers',
-                    'chatbots',
                     f'test_view_{char}'
                 }
             )
@@ -317,12 +317,7 @@ class TestCompanyIndependent(HTTPHelperMixin):
             tables = self.get_tables_in('mindsdb', cid)
             self.assert_list(
                 tables, {
-                    'jobs',
-                    'jobs_history',
                     'models',
-                    'models_versions',
-                    'mdb_triggers',
-                    'chatbots',
                 }
             )
 
@@ -368,12 +363,12 @@ class TestCompanyIndependent(HTTPHelperMixin):
 
         databases = client_a.list_databases()
         self.assert_list([x['name'] for x in databases], {
-            'admin', 'information_schema', 'mindsdb',
+            'admin', 'information_schema', 'mindsdb', 'log',
             'files', 'test_integration_a'
         })
         databases = client_b.list_databases()
         self.assert_list([x['name'] for x in databases], {
-            'admin', 'information_schema', 'mindsdb',
+            'admin', 'information_schema', 'mindsdb', 'log',
             'files', 'test_integration_b'
         })
 
@@ -394,22 +389,12 @@ class TestCompanyIndependent(HTTPHelperMixin):
 
         collections = client_a.mindsdb.list_collection_names()
         self.assert_list(collections, {
-            'jobs',
-            'jobs_history',
             'models',
-            'models_versions',
-            'mdb_triggers',
-            'chatbots',
             'test_mon_p_a',
             'model_a'
         })
         collections = client_b.mindsdb.list_collection_names()
         self.assert_list(collections, {
-            'jobs',
-            'jobs_history',
             'models',
-            'models_versions',
-            'mdb_triggers',
-            'chatbots',
             'model_b'
         })

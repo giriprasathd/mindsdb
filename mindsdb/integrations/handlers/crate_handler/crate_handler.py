@@ -15,7 +15,9 @@ from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_T
 
 import pandas as pd
 from crate import client as db
-from crate.client.sqlalchemy.dialect import CrateDialect
+from sqlalchemy_cratedb import dialect
+
+logger = log.getLogger(__name__)
 
 
 class CrateHandler(DatabaseHandler):
@@ -60,7 +62,7 @@ class CrateHandler(DatabaseHandler):
 
             self.is_connected = True
         except Exception as e:
-            log.logger.error(f"Error while connecting to CrateDB, {e}")
+            logger.error(f"Error while connecting to CrateDB, {e}")
 
         return self.connection
 
@@ -75,7 +77,7 @@ class CrateHandler(DatabaseHandler):
             self.connection.close()
             self.is_connected = False
         except Exception as e:
-            log.logger.error(f"Error while disconnecting to CrateDB, {e}")
+            logger.error(f"Error while disconnecting to CrateDB, {e}")
 
         return
 
@@ -92,7 +94,7 @@ class CrateHandler(DatabaseHandler):
             self.connect()
             responseCode.success = True
         except Exception as e:
-            log.logger.error(f"Error connecting to  CrateDB, {e}!")
+            logger.error(f"Error connecting to  CrateDB, {e}!")
             responseCode.error_message = str(e)
         finally:
             if responseCode.success is True and need_to_close:
@@ -128,7 +130,7 @@ class CrateHandler(DatabaseHandler):
             else:
                 response = Response(RESPONSE_TYPE.OK)
         except Exception as e:
-            log.logger.error(f"Error running query: {query} on CrateDB!")
+            logger.error(f"Error running query: {query} on CrateDB!")
             response = Response(RESPONSE_TYPE.ERROR, error_message=str(e))
         cur.close()
 
@@ -146,7 +148,7 @@ class CrateHandler(DatabaseHandler):
             HandlerResponse
         """
 
-        renderer = SqlalchemyRender(CrateDialect)
+        renderer = SqlalchemyRender(dialect)
         query_str = renderer.get_string(query, with_failback=True)
         return self.native_query(query_str)
 

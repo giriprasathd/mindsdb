@@ -14,13 +14,13 @@ import datetime as dt
 
 import mindsdb.api.mongo.functions as helpers
 from mindsdb.api.mongo.classes import RespondersCollection, Session
-from mindsdb.api.mongo.utilities import logger
 from mindsdb.interfaces.storage import db
 from mindsdb.interfaces.model.model_controller import ModelController
 from mindsdb.interfaces.database.integrations import integration_controller
 from mindsdb.interfaces.database.projects import ProjectController
 from mindsdb.interfaces.database.database import DatabaseController
 from mindsdb.utilities.context import context as ctx
+from mindsdb.utilities import log
 
 OP_REPLY = 1
 OP_UPDATE = 2001
@@ -35,6 +35,8 @@ BYTE = '<b'
 INT = '<i'
 UINT = '<I'
 LONG = '<q'
+
+logger = log.getLogger(__name__)
 
 
 class NPIntCodec(TypeCodec):
@@ -249,18 +251,9 @@ class MongoRequestHandler(SocketServer.BaseRequestHandler):
 
     def _init_ssl(self):
         import ssl
-        import tempfile
-        import atexit
-        import os
 
-        from mindsdb.utilities.wizards import make_ssl_cert
+        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
 
-        CERT_PATH = tempfile.mkstemp(prefix='mindsdb_cert_', text=True)[1]
-        make_ssl_cert(CERT_PATH)
-        atexit.register(lambda: os.remove(CERT_PATH))
-
-        ssl_context = ssl.SSLContext()
-        ssl_context.load_cert_chain(CERT_PATH)
         ssl_socket = ssl_context.wrap_socket(
             self.request,
             server_side=True,

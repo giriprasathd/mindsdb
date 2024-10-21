@@ -1,3 +1,6 @@
+
+from mindsdb.interfaces.agents.constants import USER_COLUMN, ASSISTANT_COLUMN
+
 from .model_executor import ModelExecutor
 from .types import Function, BotException
 
@@ -17,7 +20,7 @@ class BotExecutor:
 
         back_db_name = self.chat_task.bot_params.get('backoffice_db')
         if back_db_name is not None:
-            back_db = self.chat_task.session.integration_controller.get_handler(back_db_name)
+            back_db = self.chat_task.session.integration_controller.get_data_handler(back_db_name)
             if hasattr(back_db, 'back_office_config'):
                 back_db_config = back_db.back_office_config()
 
@@ -31,6 +34,11 @@ class BotExecutor:
         return functions
 
     def process(self):
+        # restart of the bot clear previous history
+        if self.chat_memory.get_mode() is None:
+            self.chat_memory.hide_history(left_count=1)
+            self.chat_memory.set_mode('main')
+
         functions = self._prepare_available_functions()
 
         model_executor = self._get_model(self.chat_task.base_model_name)
@@ -159,5 +167,60 @@ class MultiModeBotExecutor(BotExecutor):
             model_executor, functions = self.enter_bot_mode(functions_all)
 
             model_output = model_executor.call(self.chat_memory.get_history(), functions)
+
+        return model_output
+
+
+class AgentExecutor:
+    def __init__(self, chat_task, chat_memory):
+        self.chat_task = chat_task
+        self.chat_memory = chat_memory
+
+    def _chat_history_to_conversation(self, history):
+
+        bot_username = self.chat_task.bot_params['bot_username']
+
+        messages = []
+
+        for message in history:
+            text = message.text
+
+            if text is None or text.strip() == '':
+                # skip empty rows
+                continue
+
+            if message.user != bot_username:
+                # create new message row
+                messages.append({USER_COLUMN: text, ASSISTANT_COLUMN: None})
+            else:
+                if len(messages) == 0:
+                    # add empty row
+                    messages.append({USER_COLUMN: None, ASSISTANT_COLUMN: None})
+
+                # update answer in previous column
+                messages[-1][ASSISTANT_COLUMN] = text
+        return messages
+
+    def process(self):
+        # restart of the bot clear previous history
+        if self.chat_memory.get_mode() is None:
+            self.chat_memory.hide_history(left_count=1)
+            self.chat_memory.set_mode('main')
+
+        agents_controller = self.chat_task.session.agents_controller
+        project_name = self.chat_task.project_name
+
+        agent = agents_controller.get_agent_by_id(
+            self.chat_task.agent_id,
+            project_name=project_name
+        )
+
+        messages = self._chat_history_to_conversation(self.chat_memory.get_history())
+        predictions = agents_controller.get_completion(
+            agent,
+            messages=messages,
+            project_name=project_name,
+        )
+        model_output = predictions[ASSISTANT_COLUMN].iloc[-1]
 
         return model_output

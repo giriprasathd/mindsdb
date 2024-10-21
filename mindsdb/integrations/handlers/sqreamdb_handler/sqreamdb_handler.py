@@ -1,25 +1,22 @@
-from collections import OrderedDict
 from typing import Optional
+
 from mindsdb_sql.parser.ast.base import ASTNode
+
 from mindsdb.integrations.libs.base import DatabaseHandler
 from mindsdb.utilities import log
-from mindsdb_sql import parse_sql
 from mindsdb_sql.render.sqlalchemy_render import SqlalchemyRender
 from mindsdb.integrations.libs.response import (
     HandlerStatusResponse as StatusResponse,
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
-
-
 
 import pandas as pd
 import pysqream as db
 
 from pysqream_sqlalchemy.dialect import SqreamDialect 
 
-
+logger = log.getLogger(__name__)
 
 
 class SQreamDBHandler(DatabaseHandler):
@@ -83,7 +80,7 @@ class SQreamDBHandler(DatabaseHandler):
                 cur.execute('select 1;')
             response.success = True
         except db.Error as e:
-            log.logger.error(f'Error connecting to SQreamDB {self.database}, {e}!')
+            logger.error(f'Error connecting to SQreamDB {self.database}, {e}!')
             response.error_message = e
 
         if response.success is True and need_to_close:
@@ -120,7 +117,7 @@ class SQreamDBHandler(DatabaseHandler):
                     response = Response(RESPONSE_TYPE.OK)
                 self.connection.commit()
             except Exception as e:
-                log.logger.error(f'Error running query: {query} on {self.database}!')
+                logger.error(f'Error running query: {query} on {self.database}!')
                 response = Response(
                     RESPONSE_TYPE.ERROR,
                     error_message=str(e)
@@ -155,52 +152,3 @@ class SQreamDBHandler(DatabaseHandler):
         WHERE table_name = '{table_name}';
         """
         return self.query(query)
-
-
-
-connection_args = OrderedDict(
-    host={
-        'type': ARG_TYPE.STR,
-        'description': 'The host name or IP address of the SQreamDB server/database.'
-    },
-    user={
-        'type': ARG_TYPE.STR,
-        'description': 'The user name used to authenticate with the SQreamDB server.'
-    },
-    password={
-        'type': ARG_TYPE.STR,
-        'description': 'The password to authenticate the user with the SQreamDB server.'
-    },
-    port={
-        'type': ARG_TYPE.INT,
-        'description': 'Specify port to connect SQreamDB server'
-    }, 
-    database={
-        'type': ARG_TYPE.STR,
-        'description': 'Specify database name  to connect SQreamDB server'
-    },
-    service={
-        'type': ARG_TYPE.STR,
-        'description': 'Optional: service queue (default: "sqream")'
-    },
-    use_ssl={
-        'type': ARG_TYPE.BOOL,
-        'description': 'use SSL connection (default: False)'
-    },
-    clustered={
-        'type': ARG_TYPE.BOOL,
-        'description': 'Optional:  Connect through load balancer, or direct to worker (Default: false - direct to worker)'
-    },
-
-
-)
-
-connection_args_example = OrderedDict(
-    host='127.0.0.1',
-    port=5000,
-    password='sqream',
-    user='master',
-    database='sqream'
-    
-
-)

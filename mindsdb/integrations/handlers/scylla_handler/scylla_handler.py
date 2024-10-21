@@ -1,6 +1,4 @@
-import os
 import tempfile
-from collections import OrderedDict
 
 import pandas as pd
 import requests
@@ -14,7 +12,6 @@ from mindsdb_sql.parser.ast.base import ASTNode
 from mindsdb_sql.parser import ast
 from mindsdb_sql.render.sqlalchemy_render import SqlalchemyRender
 
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
 from mindsdb.integrations.libs.base import DatabaseHandler
 from mindsdb.integrations.libs.response import (
     HandlerStatusResponse as StatusResponse,
@@ -23,6 +20,7 @@ from mindsdb.integrations.libs.response import (
 )
 from mindsdb.utilities import log
 
+logger = log.getLogger(__name__)
 
 class ScyllaHandler(DatabaseHandler):
     """
@@ -73,9 +71,14 @@ class ScyllaHandler(DatabaseHandler):
         if self.is_connected is True:
             return self.session
 
-        auth_provider = PlainTextAuthProvider(
-            username=self.connection_args['user'], password=self.connection_args['password']
-        )
+        auth_provider = None
+        if any(key in self.connection_args for key in ('user', 'password')):
+            if all(key in self.connection_args for key in ('user', 'password')):
+                auth_provider = PlainTextAuthProvider(
+                    username=self.connection_args['user'], password=self.connection_args['password']
+                )
+            else:
+                raise ValueError("If authentication is required, both 'user' and 'password' must be provided!") 
 
         connection_props = {
             'auth_provider': auth_provider
@@ -114,7 +117,7 @@ class ScyllaHandler(DatabaseHandler):
             session.execute('SELECT release_version FROM system.local').one()
             response.success = True
         except Exception as e:
-            log.logger.error(f'Error connecting to Scylla {self.connection_args["keyspace"]}, {e}!')
+            logger.error(f'Error connecting to Scylla {self.connection_args["keyspace"]}, {e}!')
             response.error_message = e
 
         if response.success is False and self.is_connected is True:
@@ -154,7 +157,7 @@ class ScyllaHandler(DatabaseHandler):
             else:
                 response = Response(RESPONSE_TYPE.OK)
         except Exception as e:
-            log.logger.error(f'Error running query: {query} on {self.connection_args["keyspace"]}!')
+            logger.error(f'Error running query: {query} on {self.connection_args["keyspace"]}!')
             response = Response(
                 RESPONSE_TYPE.ERROR,
                 error_message=str(e)
@@ -200,49 +203,3 @@ class ScyllaHandler(DatabaseHandler):
         q = f"DESCRIBE {table_name};"
         result = self.native_query(q)
         return result
-
-
-connection_args = OrderedDict(
-    user={
-        'type': ARG_TYPE.STR,
-        'description': 'User name',
-        'required': True,
-        'label': 'User'
-    },
-    password={
-        'type': ARG_TYPE.PWD,
-        'description': 'Password',
-        'required': True,
-        'label': 'Password'
-    },
-    protocol_version={
-        'type': ARG_TYPE.INT,
-        'description': 'is not required, and default to 4.',
-        'required': False,
-        'label': 'Protocol version'
-    },
-    host={
-        'type': ARG_TYPE.STR,
-        'description': ' is the host name or IP address of the ScyllaDB.',
-        'required': True,
-        'label': 'Host'
-    },
-    port={
-        'type': ARG_TYPE.INT,
-        'description': 'Server port',
-        'required': True,
-        'label': 'Port'
-    },
-    keyspace={
-        'type': ARG_TYPE.STR,
-        'description': 'is the keyspace to connect to. It is a top level container for tables.',
-        'required': True,
-        'label': 'Keyspace'
-    },
-    secure_connect_bundle={
-        'type': ARG_TYPE.STR,
-        'description': 'Path or URL to the secure connect bundle',
-        'required': True,
-        'label': 'Host'
-    }
-)

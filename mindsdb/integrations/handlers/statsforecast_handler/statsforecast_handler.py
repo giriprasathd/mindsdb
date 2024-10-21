@@ -14,6 +14,12 @@ from sklearn.metrics import r2_score
 from statsforecast import StatsForecast
 from statsforecast.models import AutoARIMA, AutoCES, AutoETS, AutoTheta
 
+# hierarchicalforecast is an optional dependency
+try:
+    from hierarchicalforecast.core import HierarchicalReconciliation
+except ImportError:
+    HierarchicalReconciliation = None
+
 DEFAULT_MODEL_NAME = "AutoARIMA"
 model_dict = {
     "AutoARIMA": AutoARIMA,
@@ -48,7 +54,7 @@ def get_season_length(frequency):
 
 def get_insample_cv_results(model_args, df):
     """Gets insample cross validation results"""
-    season_length = get_season_length(model_args["frequency"])
+    season_length = get_season_length(model_args["frequency"]) if not model_args.get("season_length") else model_args["season_length"]  # noqa
     if model_args["model_name"] == "auto":
         models = [model(season_length=season_length) for model in model_dict.values()]
     else:
@@ -69,7 +75,7 @@ def choose_model(model_args, results_df):
     """
     if model_args["model_name"] == "auto":
         model_args["model_name"] = get_best_model_from_results_df(results_df)
-    model_args["season_length"] = get_season_length(model_args["frequency"])
+    model_args["season_length"] = get_season_length(model_args["frequency"]) if not model_args.get("season_length") else model_args["season_length"]  # noqa
     model = model_dict[model_args["model_name"]]
     return model(season_length=model_args["season_length"])
 
@@ -95,6 +101,7 @@ class StatsForecastHandler(BaseMLEngine):
         assert time_settings["is_timeseries"], "Specify time series settings in your query"
         ###### store model args and time series settings in the model folder
         model_args = {}
+        model_args.update(using_args)
         model_args["target"] = target
         model_args["horizon"] = time_settings["horizon"]
         model_args["order_by"] = time_settings["order_by"]
@@ -108,7 +115,7 @@ class StatsForecastHandler(BaseMLEngine):
             using_args["frequency"] if "frequency" in using_args else infer_frequency(df, time_settings["order_by"])
         )
         model_args["hierarchy"] = using_args["hierarchy"] if "hierarchy" in using_args else False
-        if model_args["hierarchy"]:
+        if model_args["hierarchy"] and HierarchicalReconciliation is not None:
             training_df, hier_df, hier_dict = get_hierarchy_from_df(df, model_args)
             self.model_storage.file_set("hier_dict", dill.dumps(hier_dict))
             self.model_storage.file_set("hier_df", dill.dumps(hier_df))
@@ -150,7 +157,7 @@ class StatsForecastHandler(BaseMLEngine):
         forecast_df = sf.predict(model_args["horizon"])
         forecast_df.index = forecast_df.index.astype(str)
 
-        if model_args["hierarchy"]:
+        if model_args["hierarchy"] and HierarchicalReconciliation is not None:
             hier_df = dill.loads(self.model_storage.file_get("hier_df"))
             hier_dict = dill.loads(self.model_storage.file_get("hier_dict"))
             reconciled_df = reconcile_forecasts(training_df, forecast_df, hier_df, hier_dict)

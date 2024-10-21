@@ -1,5 +1,4 @@
 from typing import Optional
-from collections import OrderedDict
 
 import pandas as pd
 import pyodbc
@@ -17,7 +16,8 @@ from mindsdb.integrations.libs.response import (
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
+
+logger = log.getLogger(__name__)
 
 
 class AccessHandler(DatabaseHandler):
@@ -91,7 +91,7 @@ class AccessHandler(DatabaseHandler):
             self.connect()
             response.success = True
         except Exception as e:
-            log.logger.error(f'Error connecting to SQLite {self.connection_data["db_file"]}, {e}!')
+            logger.error(f'Error connecting to SQLite {self.connection_data["db_file"]}, {e}!')
             response.error_message = str(e)
         finally:
             if response.success is True and need_to_close:
@@ -130,7 +130,7 @@ class AccessHandler(DatabaseHandler):
                     response = Response(RESPONSE_TYPE.OK)
                     connection.commit()
             except Exception as e:
-                log.logger.error(f'Error running query: {query} on {self.connection_data["db_file"]}!')
+                logger.error(f'Error running query: {query} on {self.connection_data["db_file"]}!')
                 response = Response(
                     RESPONSE_TYPE.ERROR,
                     error_message=str(e)
@@ -195,15 +195,3 @@ class AccessHandler(DatabaseHandler):
         )
 
         return response
-
-
-connection_args = OrderedDict(
-    db_file={
-        'type': ARG_TYPE.STR,
-        'description': 'The database file where the data will be stored.'
-    }
-)
-
-connection_args_example = OrderedDict(
-    db_file='C:\\Users\\minurap\\Documents\\example_db.accdb'
-)

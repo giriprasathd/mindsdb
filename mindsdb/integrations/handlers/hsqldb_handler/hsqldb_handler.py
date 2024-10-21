@@ -1,5 +1,3 @@
-from collections import OrderedDict
-
 import pandas as pd
 import pyodbc
 
@@ -12,8 +10,9 @@ from mindsdb.integrations.libs.response import (
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
 from mindsdb_sql.render.sqlalchemy_render import SqlalchemyRender
+
+logger = log.getLogger(__name__)
 
 class HSQLDBHandler(DatabaseHandler):
     """
@@ -88,7 +87,7 @@ class HSQLDBHandler(DatabaseHandler):
             self.connect()
             response.success = True
         except Exception as e:
-            log.logger.error(f'Error connecting to SQLite, {e}!')
+            logger.error(f'Error connecting to SQLite, {e}!')
             response.error_message = str(e)
         finally:
             if response.success is True and need_to_close:
@@ -127,7 +126,7 @@ class HSQLDBHandler(DatabaseHandler):
                     response = Response(RESPONSE_TYPE.OK)
                     connection.commit()
             except Exception as e:
-                log.logger.error(f'Error running query: {query}!')
+                logger.error(f'Error running query: {query}!')
                 response = Response(
                     RESPONSE_TYPE.ERROR,
                     error_message=str(e)
@@ -196,37 +195,3 @@ class HSQLDBHandler(DatabaseHandler):
         )
 
         return response
-
-connection_args = OrderedDict(
-    server_name={
-        'type': ARG_TYPE.STR,
-        'description': 'The host name or IP address of the database'
-    },
-    port={
-        'type': ARG_TYPE.INT,
-        'description': 'Specify port to connect.'
-    },
-    database_name={
-        'type': ARG_TYPE.STR,
-        'description': '''
-            The database name to use when connecting.
-        '''
-    },
-    username={
-        'type': ARG_TYPE.STR,
-        'description': 'The user name used to authenticate.'
-    },
-    password={
-        'type': ARG_TYPE.STR,
-        'description': 'The password to authenticate.'
-    },
-    
-)
-
-connection_args_example = OrderedDict(
-    server_name = 'localhost',
-    port =  9001,
-    database_name = 'xdb',
-    username = 'SA',
-    password = 'password'
-)

@@ -1,6 +1,5 @@
 import pyodbc
 
-from collections import OrderedDict
 import pandas as pd
 from mindsdb_sql import parse_sql
 
@@ -14,7 +13,8 @@ from mindsdb.integrations.libs.response import (
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
+
+logger = log.getLogger(__name__)
 
 
 class EmpressHandler(DatabaseHandler):
@@ -81,7 +81,7 @@ class EmpressHandler(DatabaseHandler):
             self.connect()
             response.success = True
         except Exception as e:
-            log.logger.error(f'Error connecting to Empress Embedded, {e}!')
+            logger.error(f'Error connecting to Empress Embedded, {e}!')
             response.error_message = str(e)
         finally:
             if response.success is True and need_to_close:
@@ -130,7 +130,7 @@ class EmpressHandler(DatabaseHandler):
                     response = Response(RESPONSE_TYPE.OK)
                     connection.commit()
             except Exception as e:
-                log.logger.error(f'Error running query: {query} on {self.connection_args["database"]}!')
+                logger.error(f'Error running query: {query} on {self.connection_args["database"]}!')
                 response = Response(
                     RESPONSE_TYPE.ERROR,
                     error_message=str(e)
@@ -209,41 +209,3 @@ class EmpressHandler(DatabaseHandler):
         )
 
         return response
-
-
-connection_args = OrderedDict(
-    host={
-        'type': ARG_TYPE.STR,
-        'description': 'The host name or IP address of the Empress Embedded server.'
-    },
-    port={
-        'type': ARG_TYPE.INT,
-        'description': 'Specify port to connect to Empress Embedded server'
-    },
-    user={
-        'type': ARG_TYPE.STR,
-        'description': 'The user name used to authenticate with the Empress Embedded server.'
-    },
-    password={
-        'type': ARG_TYPE.STR,
-        'description': 'The password to authenticate the user with the Empress Embedded server.'
-    },
-    server={
-        'type': ARG_TYPE.STR,
-        'description': 'The server name used to authenticate with the Empress Embedded server.'
-    },
-    database={
-        'type': ARG_TYPE.STR,
-        'description': 'Specify database name to connect Empress Embedded server'
-    },
-
-)
-
-connection_args_example = OrderedDict(
-    host='localhost',
-    port=6322,
-    user='admin',
-    password='password',
-    server='test',
-    database='test_db'
-)

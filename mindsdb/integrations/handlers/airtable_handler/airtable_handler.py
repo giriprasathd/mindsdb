@@ -1,22 +1,21 @@
 from typing import Optional
-from collections import OrderedDict
 
 import pandas as pd
 import requests
 import duckdb
 
 from mindsdb_sql import parse_sql
-from mindsdb.integrations.libs.base import DatabaseHandler
-
 from mindsdb_sql.parser.ast.base import ASTNode
 
 from mindsdb.utilities import log
+from mindsdb.integrations.libs.base import DatabaseHandler
 from mindsdb.integrations.libs.response import (
     HandlerStatusResponse as StatusResponse,
     HandlerResponse as Response,
     RESPONSE_TYPE
 )
-from mindsdb.integrations.libs.const import HANDLER_CONNECTION_ARG_TYPE as ARG_TYPE
+
+logger = log.getLogger(__name__)
 
 
 class AirtableHandler(DatabaseHandler):
@@ -111,7 +110,7 @@ class AirtableHandler(DatabaseHandler):
             self.connect()
             response.success = True
         except Exception as e:
-            log.logger.error(f'Error connecting to Airtable base {self.connection_data["base_id"]}, {e}!')
+            logger.error(f'Error connecting to Airtable base {self.connection_data["base_id"]}, {e}!')
             response.error_message = str(e)
         finally:
             if response.success is True and need_to_close:
@@ -150,7 +149,7 @@ class AirtableHandler(DatabaseHandler):
                 response = Response(RESPONSE_TYPE.OK)
                 connection.commit()
         except Exception as e:
-            log.logger.error(f'Error running query: {query} on table {self.connection_data["table_name"]} in base {self.connection_data["base_id"]}!')
+            logger.error(f'Error running query: {query} on table {self.connection_data["table_name"]} in base {self.connection_data["base_id"]}!')
             response = Response(
                 RESPONSE_TYPE.ERROR,
                 error_message=str(e)
@@ -210,25 +209,3 @@ class AirtableHandler(DatabaseHandler):
         )
 
         return response
-
-
-connection_args = OrderedDict(
-    base_id={
-        'type': ARG_TYPE.STR,
-        'description': 'The Airtable base ID.'
-    },
-    table_name={
-        'type': ARG_TYPE.STR,
-        'description': 'The Airtable table name.'
-    },
-    api_key={
-        'type': ARG_TYPE.STR,
-        'description': 'The API key for the Airtable API.'
-    }
-)
-
-connection_args_example = OrderedDict(
-    base_id='dqweqweqrwwqq',
-    table_name='iris',
-    api_key='knlsndlknslk'
-)
